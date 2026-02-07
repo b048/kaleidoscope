@@ -32,7 +32,7 @@ const CONFIG = {
 // --- Particles System ---
 const particles = [];
 function spawnParticle(x, y, color) {
-    if (particles.length > CONFIG.particleCount) particles.shift(); // Limit count
+    if (particles.length > CONFIG.particleCount) particles.shift();
     particles.push({
         x: x,
         y: y,
@@ -54,8 +54,7 @@ function updateDrawParticles(ctx) {
         if (p.life <= 0) {
             particles.splice(i, 1);
         } else {
-            ctx.fillStyle = p.color; // simplified, assumes rgba is handled or passed correctly
-            // Hack for alpha:
+            ctx.fillStyle = p.color;
             ctx.globalAlpha = p.life;
             ctx.beginPath();
             ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
@@ -147,7 +146,9 @@ Composite.add(engine.world, createWalls());
 
 // Supply Slots
 const supplySlots = [];
-const slotBaseY = renderHeight - CONFIG.supplyBoxHeight + 50;
+// Safe margin from bottom to avoid browser UI
+const safeBottomMargin = 80;
+const slotBaseY = renderHeight - CONFIG.supplyBoxHeight - safeBottomMargin + 100;
 const slotWidth = renderWidth / CONFIG.slotCountCols;
 const slotRowHeight = CONFIG.supplyBoxHeight / CONFIG.slotRows;
 
@@ -164,41 +165,63 @@ function createGem(x, y, isStaticInBox = false) {
     let color = Common.choose(CONFIG.gemColors);
 
     const rand = Math.random();
-    const isGlowing = rand < 0.05; // 5%
-    // If not glowing, small chance for Eye. 0.5% overall
-    const isEye = !isGlowing && Math.random() < 0.005;
 
-    if (isEye) {
-        // Monster color
+    // Rare Super Object: Glowing + Moving
+    // Probability: 0.025% -> 0.00025
+    const isSuperRare = rand < 0.00025;
+
+    // Glowing (5%) or Super Rare
+    // Range for glowing: [0.00025, 0.05025)
+    const isGlowing = isSuperRare || (rand >= 0.00025 && rand < 0.05025);
+
+    // Eye (0.5%) - Only if not glowing (unless super rare)
+    // Range for eye: [0.05025, 0.05525)
+    const isEye = isSuperRare || (!isGlowing && rand > 0.05025 && rand < 0.05525);
+
+    if (isEye && !isSuperRare) {
         color = Common.choose(['#9b59b6', '#2ecc71', '#e67e22', '#34495e']);
+    }
+    if (isSuperRare) {
+        color = '#FFD700'; // Gold
     }
 
     const plug = {};
     if (isGlowing) {
         plug.type = 'glowing';
         plug.complementary = getComplementaryColor(color);
-    } else if (isEye) {
-        plug.type = 'eye';
+    }
+
+    if (isEye) {
+        if (!plug.type) plug.type = 'eye';
+        if (isSuperRare) plug.type = 'super_eye';
+
         plug.eyeOffset = Math.random() * 1000;
-        plug.blinkTimer = 0; // use simpler blink logic
-        // Movement state
+        plug.blinkTimer = 0;
         plug.noiseOffset = Math.random() * 1000;
-    } else {
+    } else if (!isGlowing) {
         plug.type = 'normal';
     }
 
-    const body = Bodies.polygon(x, y, sides, size, {
+    const bodyOptions = {
         friction: 0.1,
         restitution: 0.6,
         frictionAir: airFriction,
         render: {
-            fillStyle: color,
+            // If it's a normal Eye, it's dark/monster colored. If Super Rare, it's Gold.
+            fillStyle: (isEye && !isSuperRare) ? '#333' : color,
             strokeStyle: 'white',
             lineWidth: isGlowing ? 4 : 2
         },
         label: 'gem',
         plugin: plug
-    });
+    };
+
+    const body = Bodies.polygon(x, y, sides, size, bodyOptions);
+
+    // Heavy weight for glowing objects
+    if (isGlowing) {
+        Body.setDensity(body, body.density * 5);
+    }
 
     if (isStaticInBox) {
         body.isStatic = true;
@@ -213,7 +236,9 @@ function checkSupplyAndCleanup() {
     Composite.allBodies(engine.world).forEach(body => {
         if (body.isStatic) return;
         const distFromCenter = Vector.magnitude(Vector.sub(body.position, boundaryCenter));
-        const isInSupplyZone = body.position.y > renderHeight - CONFIG.supplyBoxHeight - 50;
+        // Expanded supply zone check
+        const isInSupplyZone = body.position.y > renderHeight - CONFIG.supplyBoxHeight - safeBottomMargin - 50;
+
         if (distFromCenter > boundaryRadius * 1.5 && !isInSupplyZone) {
             if (body.position.x < -100 || body.position.x > renderWidth + 100 ||
                 body.position.y < -100 || body.position.y > renderHeight + 100) {
@@ -247,11 +272,17 @@ for (let i = 0; i < CONFIG.initialBeadCount; i++) {
     Composite.add(engine.world, gem);
 }
 
-// Gravity
+// Gravity Config
 function handleOrientation(event) {
     if (event.gamma === null || event.beta === null) return;
-    engine.world.gravity.x = (Common.clamp(event.gamma, -90, 90) / 90) * gravityScale;
-    engine.world.gravity.y = (Common.clamp(event.beta, -90, 90) / 90) * gravityScale;
+
+    // Improved Gravity for Mobile: Use Sine
+    const rad = Math.PI / 180;
+    const x = Math.sin(event.gamma * rad);
+    const y = Math.sin(event.beta * rad);
+
+    engine.world.gravity.x = x * gravityScale;
+    engine.world.gravity.y = y * gravityScale;
 }
 window.addEventListener('deviceorientation', handleOrientation);
 
@@ -280,8 +311,7 @@ Events.on(mouseConstraint, 'startdrag', (event) => {
 Composite.add(engine.world, mouseConstraint);
 
 
-// --- Simplex-like Noise function for smooth random movement ---
-// Simple 1D noise approximation
+// Noise function
 function noise(t) {
     return Math.sin(t) + Math.sin(2.2 * t + 5.5) * 0.5 + Math.sin(1.2 * t + 3.0) * 0.2;
 }
@@ -295,12 +325,11 @@ function render() {
     Composite.allBodies(engine.world).forEach(b => {
         if (b.label === 'gem' || b.label === 'gem_transition') b.frictionAir = airFriction;
 
-        // Eye Logic: Smooth "Swimming" logic
-        if (b.plugin && b.plugin.type === 'eye' && !b.isStatic && b.label !== 'gem_supply') {
-            // Use noise applied to force vector for smooth turns
+        // Eye (or Super Eye) Movement
+        if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye') && !b.isStatic && b.label !== 'gem_supply') {
             const t = (timestamp + b.plugin.noiseOffset) * 0.002;
-            const angle = noise(t) * Math.PI * 2; // Smoothly changing angle
-            const forceMag = 0.0005; // Gentle swim force
+            const angle = noise(t) * Math.PI * 2;
+            const forceMag = 0.0005 * (b.mass / 5);
 
             Body.applyForce(b, b.position, {
                 x: Math.cos(angle) * forceMag,
@@ -309,13 +338,12 @@ function render() {
         }
 
         // Glow Particles
-        if (b.plugin && b.plugin.type === 'glowing' && !b.isStatic) {
-            // Emmit particle occasionally
-            if (Math.random() < 0.2) { // 20% chance per frame
+        if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye') && !b.isStatic) {
+            if (Math.random() < 0.2) {
                 spawnParticle(
                     b.position.x + (Math.random() - 0.5) * 20,
                     b.position.y + (Math.random() - 0.5) * 20,
-                    'rgba(255, 255, 255, 1)'
+                    (b.plugin.type === 'super_eye') ? 'gold' : 'rgba(255, 255, 255, 1)'
                 );
             }
         }
@@ -326,9 +354,12 @@ function render() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, renderWidth, renderHeight);
 
-    // Backgrounds
+    // Supply Box Area BG
+    const boxY = renderHeight - CONFIG.supplyBoxHeight - safeBottomMargin;
     ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-    ctx.fillRect(0, renderHeight - CONFIG.supplyBoxHeight, renderWidth, CONFIG.supplyBoxHeight);
+    ctx.fillRect(0, boxY, renderWidth, CONFIG.supplyBoxHeight + safeBottomMargin);
+
+    // Boundary Link
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -337,10 +368,7 @@ function render() {
 
     // Bodies
     const bodies = Composite.allBodies(engine.world);
-
-    // Render Particles (Underneath or on top? Let's do underneath for glow effect)
     updateDrawParticles(ctx);
-
     ctx.globalCompositeOperation = 'screen';
 
     bodies.forEach(body => {
@@ -355,18 +383,18 @@ function render() {
         ctx.lineTo(vertices[0].x, vertices[0].y);
         ctx.closePath();
 
-        // Main Fill
-        // Eyes should be solid/monster color, not additively blended if possible? 
-        // Screen blend on "monster color" looks okay usually, but distinct
-        if (body.plugin && body.plugin.type === 'eye') {
-            // Eye monster body
-            ctx.globalCompositeOperation = 'source-over'; // Solid
+        // Main Fill & Glow
+        if (body.plugin && (body.plugin.type === 'eye' || body.plugin.type === 'super_eye')) {
+            if (body.plugin.type === 'super_eye') {
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = 'gold';
+            }
+            ctx.globalCompositeOperation = 'source-over';
             ctx.fillStyle = body.render.fillStyle;
             ctx.fill();
             ctx.stroke();
-            ctx.globalCompositeOperation = 'screen'; // back to normal
+            ctx.globalCompositeOperation = 'screen';
         } else {
-            // Gems
             if (body.plugin && body.plugin.type === 'glowing') {
                 ctx.shadowBlur = 15;
                 ctx.shadowColor = 'white';
@@ -383,58 +411,55 @@ function render() {
             ctx.shadowBlur = 0;
         }
 
-        // Inner Details
-        if (body.plugin && body.plugin.type === 'glowing') {
-            ctx.fillStyle = body.plugin.complementary;
-            ctx.globalCompositeOperation = 'source-over';
-            const center = body.position;
-            const scale = 0.5;
-            ctx.beginPath();
-            ctx.moveTo(center.x + (vertices[0].x - center.x) * scale, center.y + (vertices[0].y - center.y) * scale);
-            for (let j = 1; j < vertices.length; j++) {
-                ctx.lineTo(center.x + (vertices[j].x - center.x) * scale, center.y + (vertices[j].y - center.y) * scale);
+        // Inner Details (Complementary)
+        if (body.plugin && (body.plugin.type === 'glowing' || body.plugin.type === 'super_eye')) {
+            if (body.plugin.type !== 'super_eye') {
+                ctx.fillStyle = body.plugin.complementary;
+                ctx.globalCompositeOperation = 'source-over';
+                const center = body.position;
+                const scale = 0.5;
+                ctx.beginPath();
+                ctx.moveTo(center.x + (vertices[0].x - center.x) * scale, center.y + (vertices[0].y - center.y) * scale);
+                for (let j = 1; j < vertices.length; j++) {
+                    ctx.lineTo(center.x + (vertices[j].x - center.x) * scale, center.y + (vertices[j].y - center.y) * scale);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.globalCompositeOperation = 'screen';
             }
-            ctx.closePath();
-            ctx.fill();
-            ctx.globalCompositeOperation = 'screen';
         }
 
-        if (body.plugin && body.plugin.type === 'eye') {
-            // Eye Drawing
+        // Eye Details
+        if (body.plugin && (body.plugin.type === 'eye' || body.plugin.type === 'super_eye')) {
             ctx.globalCompositeOperation = 'source-over';
             const radius = 8;
             const center = body.position;
 
-            // Sclera
             ctx.fillStyle = 'white';
             ctx.beginPath();
             ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
             ctx.fill();
 
-            // Pupil
             const lookTime = (timestamp + body.plugin.eyeOffset) / 500;
             const lookX = Math.cos(lookTime) * 3;
             const lookY = Math.sin(lookTime) * 3;
-            ctx.fillStyle = 'black';
+
+            ctx.fillStyle = (body.plugin.type === 'super_eye') ? 'red' : 'black';
             ctx.beginPath();
             ctx.arc(center.x + lookX, center.y + lookY, radius * 0.4, 0, 2 * Math.PI);
             ctx.fill();
 
-            // Simple Blink (No rect, just close eye by not drawing or drawing skin over)
-            // Or just simple blink:
             const blinkCycle = (timestamp + body.plugin.noiseOffset) % 3000;
-            if (blinkCycle < 150) { // Closed for 150ms every 3s
+            if (blinkCycle < 150) {
                 ctx.fillStyle = body.render.fillStyle;
                 ctx.beginPath();
                 ctx.arc(center.x, center.y, radius + 1, 0, 2 * Math.PI);
                 ctx.fill();
             }
-
             ctx.globalCompositeOperation = 'screen';
         }
 
-        // Shine overlay (skip for eyes to keep them "matter")
-        if (!body.plugin || body.plugin.type !== 'eye') {
+        if (!body.plugin || (body.plugin.type !== 'eye' && body.plugin.type !== 'super_eye')) {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
             ctx.fill();
         }

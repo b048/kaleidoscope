@@ -11,10 +11,14 @@ body {
     background-color: #050505;
     overflow: hidden;
     width: 100vw;
+    /* Use dynamic viewport height for mobile browsers to avoid bar overlap */
     height: 100vh;
+    height: 100dvh;
     display: flex;
     justify-content: center;
     align-items: center;
+    /* Respect safe area */
+    padding-bottom: env(safe-area-inset-bottom);
 }
 
 canvas {
