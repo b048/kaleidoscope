@@ -1251,14 +1251,7 @@ function drawEvolvingBranch(ctx, x, y, len, angle, depth, timestamp, phase) {
         drawEvolvingBranch(ctx, endX, endY, subLen * 0.8, angle, depth - 1, timestamp, phase);
     }
 }
-const spread = 0.5 + Math.sin(time) * 0.2; // Moving branches
 
-drawBranch(x2, y2, subLen, angle - spread, depth - 1);
-drawBranch(x2, y2, subLen, angle + spread, depth - 1);
-    }
-
-ctx.restore();
-}
 
 function render() {
     const timestamp = Date.now();
@@ -1282,15 +1275,13 @@ render();
 
 // --- EXPORT FOR HTML BUTTONS ---
 window.setMode = function (mode) {
-    if (mode === 'fractal' && currentMode === 'fractal') {
-        // Cycle pattern if already in fractal mode
-        fractalType = (fractalType + 1) % fractalTypeNames.length;
-    } else {
-        currentMode = mode;
-        // Reset text if leaving mode
-        const fracBtn = document.getElementById('btn-fractal');
-        if (fracBtn) fracBtn.textContent = 'Frac';
-    }
+    if (mode === currentMode) return; // Do nothing if same mode
+
+    currentMode = mode;
+    // Reset text if leaving mode
+    const fracBtn = document.getElementById('btn-fractal');
+    if (fracBtn) fracBtn.textContent = 'Frac';
+
 
     // Manage Engine State
     if (mode === 'physics') {
