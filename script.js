@@ -228,7 +228,7 @@ for (let row = 0; row < CONFIG.slotRows; row++) {
 // Generate Gemstones
 function createGem(x, y, isStaticInBox = false) {
     const baseSize = 15 + Math.random() * 10; // 15-25
-    const size = baseSize * (isStaticInBox ? 1.0 : globalScale);
+    let size = baseSize * (isStaticInBox ? 1.0 : globalScale);
 
     const sides = Math.floor(3 + Math.random() * 5); // 3-7
     let color = CONFIG.gemColors[Math.floor(Math.random() * CONFIG.gemColors.length)];
@@ -247,6 +247,21 @@ function createGem(x, y, isStaticInBox = false) {
 
     const isGlowing = isSuperRare || isGlowingOnly;
     const isEye = isSuperRare || isEyeOnly;
+
+    // Size Multiplier for Super Rare
+    if (isSuperRare) {
+        // We need to recalculate size or just multiply basic size?
+        // Let's multiply the final size variable if possible, but 'const size' is already defined.
+        // Since 'size' is const, we might need to change it to let or multiply in the Bodies.polygon call.
+        // Better to change 'const size' to 'let size' or apply multiplier.
+    }
+    // Actually, 'size' is defined at the top of the function. I should insert this check earlier or adjust how bodies are created.
+    // Let's maintain the strict structure. 
+
+    // REDEFINITION FIX:
+    // I will change 'const size' to 'let size' in the next block, but wait, I can just use a multiplier variable.
+    let finalSize = size;
+    if (isSuperRare) finalSize *= 2;
 
     // Eye colors
     if (isEyeOnly) {
@@ -303,7 +318,7 @@ function createGem(x, y, isStaticInBox = false) {
         plugin: plug
     };
 
-    const body = Bodies.polygon(x, y, sides, size, bodyOptions);
+    const body = Bodies.polygon(x, y, sides, finalSize, bodyOptions);
 
     if (isGlowing || isEye) {
         Body.setDensity(body, body.density * 5); // Heavy (Glowing OR Eye)
