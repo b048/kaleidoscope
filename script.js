@@ -13,7 +13,7 @@ const Engine = Matter.Engine,
 
 // Configuration
 const CONFIG = {
-    initialBeadCount: 10,
+    initialBeadCount: 15, // Increased slightly for more interaction
     wallThickness: 100,
     gemColors: [
         'rgba(255, 0, 0, 0.7)',    // Red
@@ -36,7 +36,7 @@ function spawnParticle(x, y, color) {
     particles.push({
         x: x,
         y: y,
-        vx: (Math.random() - 0.5) * 5, // Faster explosion particles
+        vx: (Math.random() - 0.5) * 5,
         vy: (Math.random() - 0.5) * 5,
         life: 1.0,
         color: color
@@ -85,7 +85,7 @@ let renderHeight = window.innerHeight;
 let gravityScale = 1;
 let airFriction = 0.05;
 let wallRestitution = 0.6;
-let globalScale = 1.0; // User controlled scale
+let globalScale = 1.0;
 
 // Global state
 let isSensorActive = false;
@@ -189,7 +189,7 @@ for (let row = 0; row < CONFIG.slotRows; row++) {
 // Generate Gemstones
 function createGem(x, y, isStaticInBox = false) {
     const baseSize = Common.random(15, 25);
-    const size = baseSize * (isStaticInBox ? 1.0 : globalScale); // Apply scale if moving
+    const size = baseSize * (isStaticInBox ? 1.0 : globalScale);
 
     const sides = Math.floor(Common.random(3, 8));
     let color = Common.choose(CONFIG.gemColors);
@@ -197,21 +197,24 @@ function createGem(x, y, isStaticInBox = false) {
     const rand = Math.random();
 
     // Rare Super Object: Glowing + Moving
-    const isSuperRare = rand < 0.0005; // increased slightly
+    const isSuperRare = rand < 0.0005;
     const isGlowing = isSuperRare || (rand >= 0.0005 && rand < 0.0505);
-    const isEye = isSuperRare || (!isGlowing && rand > 0.0505 && rand < 0.0605); // increased slightly
+    const isEye = isSuperRare || (!isGlowing && rand > 0.0505 && rand < 0.1005); // Increased eye probability
 
+    // Eye colors
     if (isEye && !isSuperRare) {
-        color = Common.choose(['#9b59b6', '#2ecc71', '#e67e22', '#34495e']);
+        color = Common.choose(CONFIG.gemColors); // Can be any color now
     }
     if (isSuperRare) {
         color = '#FFD700'; // Gold
     }
 
     const plug = {};
+    plug.color = color; // Store color for matching
+    plug.complementary = getComplementaryColor(color);
+
     if (isGlowing) {
         plug.type = 'glowing';
-        plug.complementary = getComplementaryColor(color);
     }
 
     if (isEye) {
@@ -223,10 +226,10 @@ function createGem(x, y, isStaticInBox = false) {
         plug.noiseOffset = Math.random() * 1000;
 
         // Emotion State
-        plug.emotion = 'normal'; // normal, angry, sleep, tired, scared
+        plug.emotion = 'normal';
         plug.stuckCounter = 0;
         plug.sleepCounter = 0;
-        plug.emotionTimer = 0; // Generic timer for states
+        plug.emotionTimer = 0;
     } else if (!isGlowing) {
         plug.type = 'normal';
     }
@@ -296,6 +299,61 @@ function checkSupplyAndCleanup() {
         }
     });
 }
+
+// Collision Event for Eating
+Events.on(engine, 'collisionStart', (event) => {
+    const pairs = event.pairs;
+
+    for (let i = 0; i < pairs.length; i++) {
+        const bodyA = pairs[i].bodyA;
+        const bodyB = pairs[i].bodyB;
+
+        // Skip static
+        if (bodyA.isStatic || bodyB.isStatic) continue;
+        // Skip walls
+        if (bodyA.label === 'wall' || bodyB.label === 'wall') continue;
+
+        // Check if one is Eye and they match color
+        // Simple Logic: Only Eyes eat non-eyes (or smaller eyes)
+        // Let's make it: Eye eats matching color Gem (if Gem !Eye or smaller)
+
+        const typeA = bodyA.plugin && (bodyA.plugin.type === 'eye' || bodyA.plugin.type === 'super_eye');
+        const typeB = bodyB.plugin && (bodyB.plugin.type === 'eye' || bodyB.plugin.type === 'super_eye');
+
+        if (!typeA && !typeB) continue; // No eyes involved
+
+        // Determine Eater and Eaten
+        let eater = null;
+        let eaten = null;
+
+        // If both are eyes, larger eats smaller? Or ignore? Let's ignore cannibalism for now to keep population up.
+        // Actually user said "eat same colored block".
+        if (typeA && !typeB && bodyA.plugin.color === bodyB.plugin.color) {
+            eater = bodyA; eaten = bodyB;
+        } else if (typeB && !typeA && bodyB.plugin.color === bodyA.plugin.color) {
+            eater = bodyB; eaten = bodyA;
+        }
+
+        if (eater && eaten) {
+            // Eat!
+            // Grow Eater
+            const growthFactor = 1.05;
+            // Limit max size
+            if (eater.area < 20000) { // arbitrary cap
+                Body.scale(eater, growthFactor, growthFactor);
+                eater.mass *= growthFactor;
+            }
+
+            // FX
+            spawnParticle(eaten.position.x, eaten.position.y, eaten.plugin.color);
+            spawnParticle(eaten.position.x, eaten.position.y, 'white');
+
+            // Remove Eaten
+            Composite.remove(engine.world, eaten);
+        }
+    }
+});
+
 
 // Initial Objects
 for (let i = 0; i < CONFIG.initialBeadCount; i++) {
@@ -438,12 +496,46 @@ function render() {
         }
     }
 
-    // Update Logic
-    Composite.allBodies(engine.world).forEach(b => {
+    // Update Logic & AI Behavior
+    const bodies = Composite.allBodies(engine.world); // Cache list
+
+    bodies.forEach(b => {
         if (b.label === 'gem' || b.label === 'gem_transition') b.frictionAir = airFriction;
 
-        // --- Eye Logic (Emotions) ---
+        // --- Eye Logic (Emotions & AI) ---
         if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye') && !b.isStatic && b.label !== 'gem_supply') {
+
+            // --- AI: Scan Neighbors ---
+            const scanRange = 250 * globalScale;
+
+            bodies.forEach(other => {
+                if (b === other || other.isStatic || other.label === 'gem_supply') return;
+
+                const dVector = Vector.sub(other.position, b.position);
+                const dist = Vector.magnitude(dVector);
+
+                if (dist < scanRange && other.plugin) {
+                    const dir = Vector.normalise(dVector);
+
+                    // 1. Same Color -> Attract to Eat (Weak attraction)
+                    if (other.plugin.color === b.plugin.color) {
+                        const force = Vector.mult(dir, 0.0003 * b.mass);
+                        Body.applyForce(b, b.position, force);
+                    }
+                    // 2. Complementary Color -> Place around self (Spring-like)
+                    else if (other.plugin.color === b.plugin.complementary) {
+                        // Desired orbital distance
+                        const idealDist = 80 * globalScale;
+                        const delta = dist - idealDist;
+                        // If too far, attract. If too close, repel.
+                        const forceMag = delta * 0.00001 * b.mass; // Spring constant
+                        const force = Vector.mult(dir, forceMag);
+                        Body.applyForce(other, other.position, Vector.neg(force)); // Pull other to me? or me to other? Let's interact
+                        Body.applyForce(b, b.position, force);
+                    }
+                }
+            });
+
 
             // 1. Stuck Check -> Angular
             const speed = b.speed;
@@ -453,11 +545,10 @@ function render() {
                 b.plugin.stuckCounter = Math.max(0, b.plugin.stuckCounter - 1);
             }
 
-            // Trigger Angry START
-            // 1000 frames = ~16 sec stuck to trigger
+            // Trigger Angry
             if (b.plugin.emotion !== 'angry' && b.plugin.emotion !== 'tired' && b.plugin.emotion !== 'scared' && b.plugin.stuckCounter > 1000) {
                 b.plugin.emotion = 'angry';
-                b.plugin.emotionTimer = 180; // 3 seconds (60fps * 3)
+                b.plugin.emotionTimer = 180; // 3s
             }
 
             // State Counters
@@ -465,20 +556,20 @@ function render() {
                 b.plugin.emotionTimer--;
                 if (b.plugin.emotionTimer <= 0) {
                     b.plugin.emotion = 'tired';
-                    b.plugin.emotionTimer = 120; // Tired for 2 seconds
+                    b.plugin.emotionTimer = 120; // 2s
                 }
             } else if (b.plugin.emotion === 'tired') {
                 b.plugin.emotionTimer--;
                 if (b.plugin.emotionTimer <= 0) {
                     b.plugin.emotion = 'normal';
-                    b.plugin.stuckCounter = 0; // Reset stuck
+                    b.plugin.stuckCounter = 0;
                 }
             }
 
-            // 2. Sleep Logic (Frequency reduced 1/10)
+            // 2. Sleep Logic
             if (b.plugin.emotion === 'normal' && Math.random() < 0.0001) {
                 b.plugin.emotion = 'sleep';
-                b.plugin.sleepCounter = 600; // Sleep for 10s
+                b.plugin.sleepCounter = 600;
             }
             if (b.plugin.emotion === 'sleep') {
                 b.plugin.sleepCounter--;
@@ -489,10 +580,8 @@ function render() {
             if (b.plugin.emotion === 'angry') {
                 // Explode / Push neighbors (MILDER)
                 if (Math.random() < 0.1) {
-                    // Reduced particles
                     if (Math.random() < 0.3) spawnParticle(b.position.x, b.position.y, 'rgba(255,255,255,0.5)');
 
-                    // Repel neighbors (Reduced force)
                     Composite.allBodies(engine.world).forEach(other => {
                         if (other !== b && !other.isStatic) {
                             const d = Vector.sub(other.position, b.position);
@@ -504,19 +593,15 @@ function render() {
                             }
                         }
                     });
-                    // Minor fidget instead of Jump
                     Body.applyForce(b, b.position, { x: (Math.random() - 0.5) * 0.02, y: (Math.random() - 0.5) * 0.02 });
                 }
             } else if (b.plugin.emotion === 'sleep') {
                 // Do nothing
             } else {
-                // Normal swim (also applied to tired/scared but maybe weaker)
-                // Tired/Scared = weaker movement
+                // Normal swim
                 const moodMult = (b.plugin.emotion === 'tired' || b.plugin.emotion === 'scared') ? 0.2 : 1.0;
-
                 const t = (timestamp + b.plugin.noiseOffset) * 0.002;
                 const angle = noise(t) * Math.PI * 2;
-                // Strength proportional to size (mass) SCALED QUADRATICALLY
                 const uniqueMult = (b.plugin.type === 'super_eye') ? 2.0 : 1.0;
                 const forceMag = 0.0002 * b.mass * (globalScale * globalScale) * uniqueMult * moodMult;
                 Body.applyForce(b, b.position, {
@@ -550,8 +635,6 @@ function render() {
     ctx.arc(boundaryCenter.x, boundaryCenter.y, boundaryRadius, 0, 2 * Math.PI);
     ctx.stroke();
 
-    // Bodies
-    const bodies = Composite.allBodies(engine.world);
     updateDrawParticles(ctx);
     ctx.globalCompositeOperation = 'screen';
 
@@ -569,7 +652,6 @@ function render() {
 
         // Color Logic with Emotion
         let fill = body.render.fillStyle;
-        // Angry color change REMOVED as requested
 
         // Main Fill
         // Super Eye = Gold
@@ -602,7 +684,6 @@ function render() {
 
         // Inner Details (Complementary)
         if (body.plugin && (body.plugin.type === 'glowing' || body.plugin.type === 'super_eye')) {
-            // Skip if Angry?
             if (body.plugin.type !== 'super_eye' && body.plugin.emotion !== 'angry') {
                 ctx.fillStyle = body.plugin.complementary;
                 ctx.globalCompositeOperation = 'source-over';
@@ -639,58 +720,57 @@ function render() {
                 // Scared: > <
                 ctx.strokeStyle = 'black';
                 ctx.lineWidth = 3;
-                // Left >
                 ctx.beginPath();
                 ctx.moveTo(center.x - radius * 0.8, center.y - radius * 0.5);
                 ctx.lineTo(center.x - radius * 0.2, center.y);
                 ctx.lineTo(center.x - radius * 0.8, center.y + radius * 0.5);
                 ctx.stroke();
-                // Right <
                 ctx.beginPath();
                 ctx.moveTo(center.x + radius * 0.8, center.y - radius * 0.5);
                 ctx.lineTo(center.x + radius * 0.2, center.y);
                 ctx.lineTo(center.x + radius * 0.8, center.y + radius * 0.5);
                 ctx.stroke();
-
             } else if (body.plugin.emotion === 'tired') {
-                // Tired: Semi-closed eyelids (Two chords)
+                // Tired
                 ctx.fillStyle = 'white';
                 ctx.beginPath();
                 ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
                 ctx.fill();
-
-                // Eyelids (Greyish over top)
-                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fillStyle = 'rgba(0,0,0,0.3)'; // Eyelids
                 ctx.beginPath();
-                ctx.arc(center.x, center.y, radius, Math.PI, 0); // Top half
+                ctx.arc(center.x, center.y, radius, Math.PI, 0);
                 ctx.fill();
-
-                // Pupil (Lower down)
-                ctx.fillStyle = 'black';
+                ctx.fillStyle = 'black'; // Pupil
                 ctx.beginPath();
                 ctx.arc(center.x, center.y + radius * 0.3, radius * 0.4, 0, 2 * Math.PI);
                 ctx.fill();
-
-                // Sigh particles?
                 if (Math.random() < 0.02) spawnParticle(center.x + radius, center.y - 10, 'rgba(100,100,255,0.5)');
-
             } else {
-                // Angry or Normal -> Open Eye
+                // Normal / Angry -> Look at velocity
                 ctx.fillStyle = 'white';
                 ctx.beginPath();
                 ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
                 ctx.fill();
 
-                // Pupil
+                // LOOK AT VELOCITY LOGIC
                 let lookX = 0, lookY = 0;
                 if (body.plugin.emotion === 'angry') {
-                    // Shake pupil
                     lookX = (Math.random() - 0.5) * 2;
                     lookY = (Math.random() - 0.5) * 2;
                 } else {
-                    const lookTime = (timestamp + body.plugin.eyeOffset) / 500;
-                    lookX = Math.cos(lookTime) * 3 * globalScale;
-                    lookY = Math.sin(lookTime) * 3 * globalScale;
+                    // Look along velocity vector
+                    const vel = body.velocity;
+                    const speed = Vector.magnitude(vel);
+                    if (speed > 0.5) { // Only look if moving somewhat
+                        const vNorm = Vector.normalise(vel);
+                        lookX = vNorm.x * 4 * globalScale; // Range of looking
+                        lookY = vNorm.y * 4 * globalScale;
+                    } else {
+                        // Idle look
+                        const lookTime = (timestamp + body.plugin.eyeOffset) / 1000;
+                        lookX = Math.cos(lookTime) * 2 * globalScale;
+                        lookY = Math.sin(lookTime) * 2 * globalScale;
+                    }
                 }
 
                 ctx.fillStyle = (body.plugin.type === 'super_eye') ? 'red' : 'black';
@@ -698,16 +778,14 @@ function render() {
                 ctx.arc(center.x + lookX, center.y + lookY, radius * 0.4, 0, 2 * Math.PI);
                 ctx.fill();
 
-                // Angry Eyebrows & Mouth "Muta-tto" (Sullen)
+                // Angry Features
                 if (body.plugin.emotion === 'angry') {
-                    // Eyebrows
                     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
                     ctx.lineWidth = 2;
                     ctx.beginPath();
                     ctx.moveTo(center.x - radius, center.y - radius * 0.5);
                     ctx.lineTo(center.x + radius, center.y - radius * 0.5);
                     ctx.stroke();
-                    // Mouth
                     ctx.beginPath();
                     ctx.moveTo(center.x - radius * 0.5, center.y + radius * 0.5);
                     ctx.lineTo(center.x + radius * 0.5, center.y + radius * 0.5);
