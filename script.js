@@ -236,11 +236,22 @@ function createGem(x, y, isStaticInBox = false) {
         plug.blinkTimer = 0;
         plug.noiseOffset = Math.random() * 1000;
 
-        // Emotion State
+        // Personality
+        const personalities = ['curious', 'shy', 'aggressive', 'lazy', 'hyper'];
+        // Weights could be added, but equal chance is fine for now
+        plug.personality = Common.choose(personalities);
+
+        // State
         plug.emotion = 'normal';
         plug.stuckCounter = 0;
         plug.sleepCounter = 0;
         plug.emotionTimer = 0;
+
+        // Fascination State
+        plug.fascinatedTimer = 0;
+        plug.cooldownTimer = 0;
+        plug.isFascinated = false;
+        plug.fascinatedTarget = null;
     } else if (!isGlowing) {
         plug.type = 'normal';
     }
@@ -534,10 +545,23 @@ function drawPhysicsMode(timestamp, ctx) {
         // --- Eye Logic (Emotions & AI) ---
         if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye') && !b.isStatic && b.label !== 'gem_supply') {
 
-            // --- 1. AI: Scan Neighbors (Find Fascination Target) ---
-            const scanRange = 250 * globalScale;
+            // Fix undefined checks
+            if (typeof b.plugin.stuckCounter === 'undefined') b.plugin.stuckCounter = 0;
+            if (typeof b.plugin.fascinatedTimer === 'undefined') b.plugin.fascinatedTimer = 0;
+            if (typeof b.plugin.cooldownTimer === 'undefined') b.plugin.cooldownTimer = 0;
+
+            // --- Personality Parameters ---
+            let scanRangeMult = 1.0;
+            if (b.plugin.personality === 'curious') scanRangeMult = 1.5;
+            if (b.plugin.personality === 'shy') scanRangeMult = 0.8;
+            if (b.plugin.personality === 'hyper') scanRangeMult = 1.2;
+
+            // --- 1. AI: Scan Neighbors ---
+            const scanRange = 250 * globalScale * scanRangeMult;
             let nearestGlowing = null;
             let nearestDist = Infinity;
+            let nearestOther = null; // For Shy/Aggressive logic
+            let nearestOtherDist = Infinity;
 
             bodies.forEach(other => {
                 if (b === other || other.isStatic || other.label === 'gem_supply') return;
@@ -546,6 +570,12 @@ function drawPhysicsMode(timestamp, ctx) {
                 const dist = Vector.magnitude(dVector);
 
                 if (dist < scanRange && other.plugin) {
+                    // Track nearest non-glowing for social logic
+                    if (dist < nearestOtherDist) {
+                        nearestOther = other;
+                        nearestOtherDist = dist;
+                    }
+
                     // Check for Fascination (Must be glowing type)
                     if ((other.plugin.type === 'glowing' || other.plugin.type === 'super_eye') && dist < nearestDist) {
                         nearestGlowing = other;
@@ -554,30 +584,79 @@ function drawPhysicsMode(timestamp, ctx) {
 
                     const dir = Vector.normalise(dVector);
 
-                    // 1. Same Color -> Attract to Eat (Weak attraction)
-                    if (other.plugin.color === b.plugin.color) {
-                        const force = Vector.mult(dir, 0.0003 * b.mass);
+                    // Social Forces based on Personality
+
+                    // SHY: Avoid everyone
+                    if (b.plugin.personality === 'shy' && dist < 120 * globalScale) {
+                        const force = Vector.mult(dir, -0.0005 * b.mass); // Flee
                         Body.applyForce(b, b.position, force);
                     }
-                    // 2. Complementary Color -> Place around self (Spring-like)
-                    else if (other.plugin.color === b.plugin.complementary) {
-                        const idealDist = 90 * globalScale;
-                        const delta = dist - idealDist;
-                        const forceMag = delta * 0.00005 * b.mass;
-                        const force = Vector.mult(dir, forceMag);
-                        Body.applyForce(other, other.position, Vector.neg(force));
-                        Body.applyForce(b, b.position, Vector.mult(force, 0.1));
+
+                    // AGGRESSIVE: Chase same color
+                    else if (b.plugin.personality === 'aggressive' && other.plugin.color === b.plugin.color) {
+                        const force = Vector.mult(dir, 0.0005 * b.mass); // Chase
+                        Body.applyForce(b, b.position, force);
+                    }
+
+                    // Standard behaviors (if not overridden by strong personality traits)
+                    if (b.plugin.personality !== 'shy') {
+                        // 1. Same Color -> Attract to Eat (Weak attraction)
+                        if (other.plugin.color === b.plugin.color) {
+                            const force = Vector.mult(dir, 0.0003 * b.mass);
+                            Body.applyForce(b, b.position, force);
+                        }
+                        // 2. Complementary Color -> Place around self (Spring-like)
+                        else if (other.plugin.color === b.plugin.complementary) {
+                            const idealDist = 90 * globalScale;
+                            const delta = dist - idealDist;
+                            const forceMag = delta * 0.00005 * b.mass;
+                            const force = Vector.mult(dir, forceMag);
+                            Body.applyForce(other, other.position, Vector.neg(force));
+                            Body.applyForce(b, b.position, Vector.mult(force, 0.1));
+                        }
                     }
                 }
             });
 
-            // Set State
-            if (nearestGlowing) {
-                b.plugin.isFascinated = true;
-                b.plugin.fascinatedTarget = nearestGlowing;
-            } else {
+            // --- Fascination Logic & Boredom ---
+
+            // Cooldown handling
+            if (b.plugin.cooldownTimer > 0) {
+                b.plugin.cooldownTimer--;
                 b.plugin.isFascinated = false;
                 b.plugin.fascinatedTarget = null;
+            } else {
+                // Check if we SHOULD get fascinated
+                let canBeFascinated = true;
+                if (b.plugin.personality === 'shy' && Math.random() > 0.1) canBeFascinated = false; // Shy rarely looks
+                if (b.plugin.personality === 'aggressive') canBeFascinated = false; // Too busy
+                if (b.plugin.personality === 'lazy' && nearestDist > 100 * globalScale) canBeFascinated = false; // Too far
+
+                if (nearestGlowing && canBeFascinated) {
+                    b.plugin.isFascinated = true;
+                    b.plugin.fascinatedTarget = nearestGlowing;
+                    b.plugin.fascinatedTimer++; // Increment timer
+
+                    // Boredom Check (10 seconds = 600 frames)
+                    if (b.plugin.fascinatedTimer > 600) {
+                        b.plugin.isFascinated = false;
+                        b.plugin.fascinatedTarget = null;
+                        b.plugin.cooldownTimer = 300 + Math.random() * 300; // 5-10s cooldown
+                        b.plugin.fascinatedTimer = 0;
+
+                        // Action on bored: Move away or switch action
+                        b.plugin.emotion = 'tired';
+                        b.plugin.emotionTimer = 60;
+                        Body.applyForce(b, b.position, {
+                            x: (Math.random() - 0.5) * 0.05 * b.mass,
+                            y: (Math.random() - 0.5) * 0.05 * b.mass
+                        });
+                    }
+                } else {
+                    b.plugin.isFascinated = false;
+                    b.plugin.fascinatedTarget = null;
+                    b.plugin.fascinatedTimer = Math.max(0, b.plugin.fascinatedTimer - 1); // Decay
+                }
             }
 
 
@@ -616,8 +695,12 @@ function drawPhysicsMode(timestamp, ctx) {
             }
 
             // 2. Sleep Logic
-            // If fascinated, don't sleep
-            if (b.plugin.emotion === 'normal' && !b.plugin.isFascinated && Math.random() < 0.0001) {
+            // Lazy sleeps more
+            let sleepChance = 0.0001;
+            if (b.plugin.personality === 'lazy') sleepChance = 0.0005;
+            if (b.plugin.personality === 'hyper') sleepChance = 0.00001;
+
+            if (b.plugin.emotion === 'normal' && !b.plugin.isFascinated && Math.random() < sleepChance) {
                 b.plugin.emotion = 'sleep';
                 b.plugin.sleepCounter = 600;
             }
@@ -672,8 +755,20 @@ function drawPhysicsMode(timestamp, ctx) {
 
                 const swimCycle = Math.sin(timestamp * 0.005 + b.plugin.noiseOffset);
                 if (swimCycle > 0) {
-                    const kickStrength = 0.0003 * b.mass * (globalScale ** 1.5);
+                    let kickStrength = 0.0003 * b.mass * (globalScale ** 1.5);
+
+                    // Personality Speed Multipliers
+                    if (b.plugin.personality === 'lazy') kickStrength *= 0.5;
+                    if (b.plugin.personality === 'hyper') kickStrength *= 1.5;
+                    if (b.plugin.personality === 'aggressive') kickStrength *= 1.2;
+
                     const moodMult = (b.plugin.emotion === 'tired' || b.plugin.emotion === 'scared') ? 0.3 : 1.0;
+
+                    // Hyper jitters direction
+                    if (b.plugin.personality === 'hyper' && Math.random() < 0.1) {
+                        b.angle += (Math.random() - 0.5);
+                    }
+
                     const force = {
                         x: Math.cos(b.angle) * kickStrength * moodMult,
                         y: Math.sin(b.angle) * kickStrength * moodMult
