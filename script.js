@@ -225,7 +225,6 @@ for (let row = 0; row < CONFIG.slotRows; row++) {
 }
 
 // Generate Gemstones
-// Generate Gemstones
 function createGem(x, y, isStaticInBox = false) {
     const baseSize = 15 + Math.random() * 10; // 15-25
     let size = baseSize * (isStaticInBox ? 1.0 : globalScale);
@@ -675,19 +674,23 @@ function drawPhysicsMode(timestamp, ctx) {
                 b.plugin.isFascinated = false;
                 b.plugin.fascinatedTarget = null;
             } else {
-                // Check if we SHOULD get fascinated
+                // Check if we SHOULD get fascinated - ALL personalities can be fascinated now
                 let canBeFascinated = true;
-                if (b.plugin.personality === 'shy' && Math.random() > 0.1) canBeFascinated = false; // Shy rarely looks
-                if (b.plugin.personality === 'aggressive') canBeFascinated = false; // Too busy
-                if (b.plugin.personality === 'lazy' && nearestDist > 100 * globalScale) canBeFascinated = false; // Too far
 
                 if (nearestGlowing && canBeFascinated) {
                     b.plugin.isFascinated = true;
                     b.plugin.fascinatedTarget = nearestGlowing;
                     b.plugin.fascinatedTimer++; // Increment timer
 
-                    // Boredom Check (10 seconds = 600 frames)
-                    if (b.plugin.fascinatedTimer > 600) {
+                    // Boredom Threshold based on Personality
+                    let boredomThreshold = 600; // Default 10s
+                    if (b.plugin.personality === 'curious') boredomThreshold = 900; // 15s
+                    if (b.plugin.personality === 'shy') boredomThreshold = 180; // 3s
+                    if (b.plugin.personality === 'aggressive') boredomThreshold = 120; // 2s
+                    if (b.plugin.personality === 'lazy') boredomThreshold = 300; // 5s
+                    if (b.plugin.personality === 'hyper') boredomThreshold = 180; // 3s
+
+                    if (b.plugin.fascinatedTimer > boredomThreshold) {
                         b.plugin.isFascinated = false;
                         b.plugin.fascinatedTarget = null;
                         b.plugin.cooldownTimer = 900; // 15s cooldown
@@ -1178,78 +1181,91 @@ function drawAudioVisualizer(timestamp, ctx) {
     updateDrawParticles(ctx);
 }
 
-// --- EVOLVING FRACTAL MODE ---
+// --- MANDELBROT ZOOM MODE ---
+let mandelbrotState = {
+    // Interesting point (Seahorse Valley)
+    cx: -0.7436438870371587,
+    cy: 0.13182590420531197,
+    scale: 1.0,
+    maxIter: 128
+};
+
+// Offscreen buffer for performance
+let fracCanvas = document.createElement('canvas');
+let fracCtx = fracCanvas.getContext('2d');
+let fracWidth = 0;
+let fracHeight = 0;
+
 function drawFractal(timestamp, ctx) {
-    const centerX = renderWidth / 2;
-    const centerY = renderHeight / 2;
+    // Performance: Render at lower resolution
+    const quality = 0.25; // 1/4 resolution (faster)
+    const w = Math.floor(renderWidth * quality);
+    const h = Math.floor(renderHeight * quality);
 
-    // Evolve complexity over time
-    // Cycle every 60 seconds
-    const cycle = (timestamp % 60000) / 60000;
-    // Complexity 1 -> 8 -> 1
-    const complexityPhase = Math.sin(cycle * Math.PI);
-    const depth = 1 + Math.floor(complexityPhase * 7); // 1 to 8 levels
-
-    // Rotation & Pulsing
-    const time = timestamp * 0.0002;
-    const pulse = 1 + Math.sin(time * 5) * 0.1;
-    const baseSize = Math.min(renderWidth, renderHeight) * 0.25 * globalScale * pulse;
-
-    const branches = 6 + Math.floor(complexityPhase * 6); // 6 to 12 branches
-
-    ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.rotate(time * 0.5);
-
-    for (let i = 0; i < branches; i++) {
-        ctx.save();
-        ctx.rotate((Math.PI * 2 / branches) * i);
-        drawEvolvingBranch(ctx, 0, 0, baseSize, -Math.PI / 2, depth, timestamp, complexityPhase);
-        ctx.restore();
+    if (fracWidth !== w || fracHeight !== h) {
+        fracCanvas.width = w;
+        fracCanvas.height = h;
+        fracWidth = w;
+        fracHeight = h;
     }
 
-    ctx.restore();
+    // Smooth Zoom
+    mandelbrotState.scale *= 1.02; // Zoom speed
+    if (mandelbrotState.scale > 1e13) mandelbrotState.scale = 1.0; // Reset loop
 
-    // Center Glow
-    const glowSize = 20 * pulse;
-    ctx.fillStyle = 'white';
-    ctx.shadowBlur = 20 + complexityPhase * 30;
-    ctx.shadowColor = `hsl(${timestamp * 0.1 % 360}, 100%, 70%)`;
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, glowSize, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-}
+    const scale = 3.0 / mandelbrotState.scale;
+    const cx = mandelbrotState.cx;
+    const cy = mandelbrotState.cy;
 
-function drawEvolvingBranch(ctx, x, y, len, angle, depth, timestamp, phase) {
-    if (depth <= 0) return;
+    // Pixel Manipulation
+    const imgData = fracCtx.createImageData(w, h);
+    const data = imgData.data;
 
-    const endX = x + Math.cos(angle) * len;
-    const endY = y + Math.sin(angle) * len;
+    for (let py = 0; py < h; py++) {
+        for (let px = 0; px < w; px++) {
+            // Map pixel to complex plane
+            const x0 = cx + (px - w / 2) * scale / h; // Aspect ratio fix
+            const y0 = cy + (py - h / 2) * scale / h;
 
-    // Color shifting based on depth and time
-    const hue = (timestamp * 0.05 + depth * 30) % 360;
-    ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${0.3 + phase * 0.7})`;
-    ctx.lineWidth = depth * globalScale * (0.5 + phase * 0.5);
-    ctx.lineCap = 'round';
+            let x = 0;
+            let y = 0;
+            let iter = 0;
+            const max = mandelbrotState.maxIter;
 
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(endX, endY);
-    ctx.stroke();
+            while (x * x + y * y <= 4 && iter < max) {
+                const xtemp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = xtemp;
+                iter++;
+            }
 
-    // Recursive Calls
-    const subLen = len * (0.6 + Math.sin(timestamp * 0.001) * 0.1);
-    const spread = 0.5 + phase * 1.0; // Angle spread increases with phase
-
-    // 2 branches
-    drawEvolvingBranch(ctx, endX, endY, subLen, angle - spread, depth - 1, timestamp, phase);
-    drawEvolvingBranch(ctx, endX, endY, subLen, angle + spread, depth - 1, timestamp, phase);
-
-    // Extra center branch at high complexity
-    if (phase > 0.7) {
-        drawEvolvingBranch(ctx, endX, endY, subLen * 0.8, angle, depth - 1, timestamp, phase);
+            // Color mapping
+            const pixelIndex = (py * w + px) * 4;
+            if (iter === max) {
+                data[pixelIndex] = 0;     // R
+                data[pixelIndex + 1] = 0; // G
+                data[pixelIndex + 2] = 0; // B
+                data[pixelIndex + 3] = 255; // A
+            } else {
+                // Psychedelic Rainbow
+                data[pixelIndex] = Math.sin(iter * 0.2 + 0) * 127 + 128; // R
+                data[pixelIndex + 1] = Math.sin(iter * 0.2 + 2) * 127 + 128; // G
+                data[pixelIndex + 2] = Math.sin(iter * 0.2 + 4) * 127 + 128; // B
+                data[pixelIndex + 3] = 255;
+            }
+        }
     }
+
+    fracCtx.putImageData(imgData, 0, 0);
+
+    // Draw upscale to main canvas
+    ctx.imageSmoothingEnabled = false; // Pixel art look
+    ctx.drawImage(fracCanvas, 0, 0, renderWidth, renderHeight);
+
+    // Add text overlay
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.font = '16px monospace';
+    ctx.fillText(`Zoom: ${mandelbrotState.scale.toExponential(2)}`, 20, renderHeight - 40);
 }
 
 
@@ -1297,7 +1313,6 @@ window.setMode = function (mode) {
     document.getElementById('btn-' + mode).classList.add('active');
 
     // Update button text immediately
-
     if (currentMode === 'fractal') {
         const fracBtn = document.getElementById('btn-fractal');
         if (fracBtn) fracBtn.textContent = 'Fractal';
