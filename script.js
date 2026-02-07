@@ -348,8 +348,6 @@ startButton.addEventListener('click', async () => {
             const response = await DeviceOrientationEvent.requestPermission();
             if (response === 'granted') {
                 window.addEventListener('deviceorientation', handleOrientation);
-                // Don't auto-hide overlay completely, just the button mainly? or check
-                // Actually if auto-rotate is on by default, we just proceed.
                 document.getElementById('instruction-overlay').classList.add('hidden');
             } else {
                 alert('Permission denied (iOS).');
@@ -366,9 +364,7 @@ startButton.addEventListener('click', async () => {
         // Check sensor
         setTimeout(() => {
             if (!isSensorActive && !isAutoRotating) {
-                // If user hasn't turned on Autoplay but sensors fail...
                 console.log("No sensor data.");
-                // We default to AutoRotating anyway in this version if config matches
             }
         }, 2000);
     }
@@ -418,12 +414,13 @@ function render() {
         engine.world.gravity.x = Math.sin(autoRotateAngle) * gravityScale * pulse;
         engine.world.gravity.y = Math.cos(autoRotateAngle) * gravityScale * pulse;
 
-        if (Math.random() < 0.05) {
+        // Turbulence (Gated by Gravity Scale)
+        if (gravityScale > 0.1 && Math.random() < 0.05) {
             Composite.allBodies(engine.world).forEach(b => {
                 if (!b.isStatic && Math.random() < 0.3) {
                     Body.applyForce(b, b.position, {
-                        x: (Math.random() - 0.5) * 0.01 * b.mass,
-                        y: (Math.random() - 0.5) * 0.01 * b.mass
+                        x: (Math.random() - 0.5) * 0.01 * b.mass * gravityScale,
+                        y: (Math.random() - 0.5) * 0.01 * b.mass * gravityScale
                     });
                 }
             });
@@ -464,27 +461,28 @@ function render() {
 
             // Action based on emotion
             if (b.plugin.emotion === 'angry') {
-                // Explode / Push neighbors
+                // Explode / Push neighbors (MILDER)
                 if (Math.random() < 0.1) {
-                    spawnParticle(b.position.x, b.position.y, 'red'); // Anger fumes
+                    // Reduced particles
+                    if (Math.random() < 0.3) spawnParticle(b.position.x, b.position.y, 'rgba(255,255,255,0.5)');
 
-                    // Repel neighbors
+                    // Repel neighbors (Reduced force)
                     Composite.allBodies(engine.world).forEach(other => {
                         if (other !== b && !other.isStatic) {
                             const d = Vector.sub(other.position, b.position);
                             const dist = Vector.magnitude(d);
-                            if (dist < 200) {
+                            if (dist < 150) { // Reduced range
                                 let force = Vector.normalise(d);
-                                force = Vector.mult(force, 0.05);
+                                force = Vector.mult(force, 0.015); // Much weaker push
                                 Body.applyForce(other, other.position, force);
                             }
                         }
                     });
-                    // Jump self
-                    Body.applyForce(b, b.position, { x: (Math.random() - 0.5) * 0.1, y: -0.1 });
+                    // Minor fidget instead of Jump
+                    Body.applyForce(b, b.position, { x: (Math.random() - 0.5) * 0.02, y: (Math.random() - 0.5) * 0.02 });
                 }
             } else if (b.plugin.emotion === 'sleep') {
-                // Do nothing, maybe heavy?
+                // Do nothing
             } else {
                 // Normal swim
                 const t = (timestamp + b.plugin.noiseOffset) * 0.002;
@@ -513,12 +511,6 @@ function render() {
 
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, renderWidth, renderHeight);
-
-    // Supply Box BG (Minimal)
-    const boxY = renderHeight - CONFIG.supplyBoxHeight - safeBottomMargin;
-    // ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'; 
-    // ctx.fillRect(0, boxY, renderWidth, CONFIG.supplyBoxHeight + safeBottomMargin); // Remove rect if user wants "margin eliminate" visual?
-    // Let's keep it faint but respect the user saying "remove margin" likely meant the visual gap.
 
     // Boundary Link
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
@@ -623,8 +615,8 @@ function render() {
                 let lookX = 0, lookY = 0;
                 if (body.plugin.emotion === 'angry') {
                     // Shake pupil
-                    lookX = (Math.random() - 0.5) * 4;
-                    lookY = (Math.random() - 0.5) * 4;
+                    lookX = (Math.random() - 0.5) * 2;
+                    lookY = (Math.random() - 0.5) * 2;
                 } else {
                     const lookTime = (timestamp + body.plugin.eyeOffset) / 500;
                     lookX = Math.cos(lookTime) * 3 * globalScale;
@@ -636,22 +628,11 @@ function render() {
                 ctx.arc(center.x + lookX, center.y + lookY, radius * 0.4, 0, 2 * Math.PI);
                 ctx.fill();
 
-                // Angry Eyebrows
-                if (body.plugin.emotion === 'angry') {
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = 3;
-                    ctx.beginPath();
-                    ctx.moveTo(center.x - radius, center.y - radius);
-                    ctx.lineTo(center.x, center.y - radius + 3);
-                    ctx.lineTo(center.x + radius, center.y - radius);
-                    ctx.stroke();
-                }
-
                 // Blink
                 if (body.plugin.emotion !== 'angry') {
                     const blinkCycle = (timestamp + body.plugin.noiseOffset) % 3000;
                     if (blinkCycle < 150) {
-                        ctx.fillStyle = (body.plugin.emotion === 'angry') ? '#e74c3c' : body.render.fillStyle;
+                        ctx.fillStyle = body.render.fillStyle;
                         ctx.beginPath();
                         ctx.arc(center.x, center.y, radius + 1, 0, 2 * Math.PI);
                         ctx.fill();
