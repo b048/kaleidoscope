@@ -204,7 +204,7 @@ function createGem(x, y, isStaticInBox = false) {
         restitution: 0.6,
         frictionAir: airFriction,
         render: {
-            fillStyle: (isEye && !isSuperRare) ? '#333' : color,
+            fillStyle: color,
             strokeStyle: 'white',
             lineWidth: isGlowing ? 4 : 2
         },
@@ -279,16 +279,20 @@ if (autoRotateCheckbox) {
     autoRotateCheckbox.addEventListener('change', (e) => {
         isAutoRotating = e.target.checked;
         isSensorActive = !isAutoRotating;
+        if (isAutoRotating && debugInfo) debugInfo.style.display = 'none';
+        if (!isAutoRotating && debugInfo) debugInfo.style.display = 'block';
     });
 }
 
 function handleOrientation(event) {
-    // If auto is on, ignore sensor (or maybe we shouldn't? User preference. Let's make Checkbox strict)
     if (isAutoRotating) return;
 
     // Debug info
-    if (debugInfo && event.alpha !== null) {
-        debugInfo.textContent = `a:${event.alpha.toFixed(1)} b:${event.beta.toFixed(1)} g:${event.gamma.toFixed(1)}`;
+    if (debugInfo) {
+        if (event.alpha !== null) {
+            debugInfo.textContent = `a:${event.alpha.toFixed(1)} b:${event.beta.toFixed(1)} g:${event.gamma.toFixed(1)}`;
+        }
+        debugInfo.style.display = 'block';
     }
 
     if (event.gamma === null || event.beta === null) return;
@@ -390,9 +394,27 @@ function render() {
 
     // Auto Rotation Logic (Sensorless / Manual)
     if (isAutoRotating) {
-        autoRotateAngle += 0.005;
-        engine.world.gravity.x = Math.sin(autoRotateAngle) * gravityScale;
-        engine.world.gravity.y = Math.cos(autoRotateAngle) * gravityScale;
+        // Variable speed
+        const speedVar = Math.sin(timestamp * 0.001) * 0.005 + 0.01;
+        autoRotateAngle += speedVar;
+
+        // Pulse gravity
+        const pulse = 1.0 + Math.sin(timestamp * 0.002) * 0.5;
+
+        engine.world.gravity.x = Math.sin(autoRotateAngle) * gravityScale * pulse;
+        engine.world.gravity.y = Math.cos(autoRotateAngle) * gravityScale * pulse;
+
+        // Turbulence
+        if (Math.random() < 0.05) {
+            Composite.allBodies(engine.world).forEach(b => {
+                if (!b.isStatic && Math.random() < 0.3) {
+                    Body.applyForce(b, b.position, {
+                        x: (Math.random() - 0.5) * 0.01 * b.mass,
+                        y: (Math.random() - 0.5) * 0.01 * b.mass
+                    });
+                }
+            });
+        }
     }
 
     // Update Logic
