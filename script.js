@@ -923,29 +923,50 @@ function drawAudioVisualizer(timestamp, ctx) {
     updateDrawParticles(ctx);
 }
 
+let fractalType = 0; // 0: Hex, 1: Sierpinski, 2: Tree
+const fractalTypeNames = ["Hexagon", "Sierpinski", "Tree"];
+
 function drawFractal(timestamp, ctx) {
     const centerX = renderWidth / 2;
     const centerY = renderHeight / 2;
 
-    // "Infinite Zoom" Fractal
-    // Concept: Draw a pattern that scales up. When it gets too big, reset opacity or fade in new one.
-    // Actually, simple recursion with rotation is best for Kaleidoscopes.
+    // Update Button Text
+    const fracBtn = document.getElementById('btn-fractal');
+    if (fracBtn && currentMode === 'fractal') {
+        fracBtn.textContent = `Frac: ${fractalTypeNames[fractalType]}`;
+    }
 
+    if (fractalType === 0) {
+        drawFractalHex(timestamp, ctx, centerX, centerY);
+    } else if (fractalType === 1) {
+        drawFractalSierpinski(timestamp, ctx, centerX, centerY);
+    } else if (fractalType === 2) {
+        drawFractalTree(timestamp, ctx, centerX, centerY);
+    }
+
+    // Center glow (common to all fractals for now)
+    const time = timestamp * 0.0002; // Re-calculate time for glow if not passed
+    const glowSize = 20 * (1 + Math.sin(time * 10) * 0.2);
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, glowSize, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawFractalHex(timestamp, ctx, cx, cy) {
+    // "Infinite Zoom" Fractal (Hexagon)
     const time = timestamp * 0.0002;
-    const sides = 6; // Hexagon symmetry for kaleidoscope
+    const sides = 6;
     const maxDepth = 4;
     const baseSize = Math.min(renderWidth, renderHeight) * 0.35 * globalScale;
 
-    // Global Rotation
     ctx.save();
-    ctx.translate(centerX, centerY);
+    ctx.translate(cx, cy);
     ctx.rotate(time * 0.5);
 
-    // Fractal Function
     function drawRecursiveShape(size, depth, rotationOffset) {
         if (depth <= 0) return;
 
-        // Draw Shape (Hexagon/Circle mix)
         ctx.beginPath();
         for (let i = 0; i < sides; i++) {
             const angle = (i / sides) * Math.PI * 2;
@@ -966,11 +987,7 @@ function drawFractal(timestamp, ctx) {
             ctx.fill();
         }
 
-        // Recursive Calls (Children)
-        // Place smaller shapes at vertices
-        const nextSize = size * 0.5; // Scale down
-
-        // Optimize: Don't draw if too small
+        const nextSize = size * 0.5;
         if (nextSize < 5) return;
 
         for (let i = 0; i < sides; i++) {
@@ -980,22 +997,101 @@ function drawFractal(timestamp, ctx) {
 
             ctx.save();
             ctx.translate(x, y);
-            ctx.rotate(time + depth); // Spin children
+            ctx.rotate(time + depth);
             drawRecursiveShape(nextSize, depth - 1, rotationOffset + time);
             ctx.restore();
         }
     }
-
     drawRecursiveShape(baseSize, maxDepth, 0);
+    ctx.restore();
+}
+
+function drawFractalSierpinski(timestamp, ctx, cx, cy) {
+    const time = timestamp * 0.0001;
+    const size = Math.min(renderWidth, renderHeight) * 0.45 * globalScale;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(time); // Slow rotation
+
+    function drawTri(x, y, r, depth) {
+        if (depth === 0) {
+            const hue = (timestamp * 0.1 + x * 0.1) % 360;
+            ctx.strokeStyle = `hsl(${hue}, 70%, 50%)`;
+            ctx.fillStyle = `hsla(${hue}, 70%, 50%, 0.3)`;
+            ctx.lineWidth = 1;
+
+            ctx.beginPath();
+            for (let i = 0; i < 3; i++) {
+                const angle = (i * 2 * Math.PI / 3) - Math.PI / 2;
+                const tx = x + Math.cos(angle) * r;
+                const ty = y + Math.sin(angle) * r;
+                if (i === 0) ctx.moveTo(tx, ty);
+                else ctx.lineTo(tx, ty);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            return;
+        }
+
+        const r2 = r / 2;
+        // Top
+        drawTri(x, y - r2, r2, depth - 1);
+        // Bottom Left
+        drawTri(x - r2 * 0.866, y + r2 * 0.5, r2, depth - 1);
+        // Bottom Right
+        drawTri(x + r2 * 0.866, y + r2 * 0.5, r2, depth - 1);
+    }
+
+    // Breathing depth/scale
+    const depth = 4 + Math.floor(Math.sin(time * 5) * 1.5 + 1.5);
+    drawTri(0, 0, size, 5);
 
     ctx.restore();
+}
 
-    // Center glow
-    const glowSize = 20 * (1 + Math.sin(time * 10) * 0.2);
-    ctx.fillStyle = 'white';
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, glowSize, 0, Math.PI * 2);
-    ctx.fill();
+function drawFractalTree(timestamp, ctx, cx, cy) {
+    const time = timestamp * 0.0005;
+
+    // 6-fold symmetry for kaleidoscope effect
+    const branches = 6;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(time * 0.2);
+
+    for (let i = 0; i < branches; i++) {
+        ctx.save();
+        ctx.rotate((Math.PI * 2 / branches) * i);
+        drawBranch(0, 0, 100 * globalScale, -Math.PI / 2, 5);
+        ctx.restore();
+    }
+
+    function drawBranch(x, y, len, angle, depth) {
+        if (depth === 0) return;
+
+        const x2 = x + Math.cos(angle) * len;
+        const y2 = y + Math.sin(angle) * len;
+
+        const hue = (timestamp * 0.1 + depth * 30) % 360;
+        ctx.strokeStyle = `hsl(${hue}, 70%, 60%)`;
+        ctx.lineWidth = depth * globalScale;
+
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+
+        // Recursive branching
+        const subLen = len * 0.7;
+        const spread = 0.5 + Math.sin(time) * 0.2; // Moving branches
+
+        drawBranch(x2, y2, subLen, angle - spread, depth - 1);
+        drawBranch(x2, y2, subLen, angle + spread, depth - 1);
+    }
+
+    ctx.restore();
 }
 
 function render() {
@@ -1020,7 +1116,15 @@ render();
 
 // --- EXPORT FOR HTML BUTTONS ---
 window.setMode = function (mode) {
-    currentMode = mode;
+    if (mode === 'fractal' && currentMode === 'fractal') {
+        // Cycle pattern if already in fractal mode
+        fractalType = (fractalType + 1) % fractalTypeNames.length;
+    } else {
+        currentMode = mode;
+        // Reset text if leaving mode
+        const fracBtn = document.getElementById('btn-fractal');
+        if (fracBtn) fracBtn.textContent = 'Frac';
+    }
 
     // Manage Engine State
     if (mode === 'physics') {
@@ -1034,6 +1138,12 @@ window.setMode = function (mode) {
     // Update Button Styles (Simple toggle class)
     document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('btn-' + mode).classList.add('active');
+
+    // Update button text immediately
+    if (currentMode === 'fractal') {
+        const fracBtn = document.getElementById('btn-fractal');
+        if (fracBtn) fracBtn.textContent = `Frac: ${fractalTypeNames[fractalType]}`;
+    }
 };
 
 window.toggleAudio = function () {
