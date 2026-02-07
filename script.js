@@ -493,6 +493,9 @@ async function setupAudio() {
 // ----------------------------------------------------------------------
 
 function drawPhysicsMode(timestamp, ctx) {
+    // 0. Supply Logic
+    checkSupplyAndCleanup();
+
     // Auto Rotation Logic
     if (isAutoRotating) {
         const speedVar = Math.sin(timestamp * 0.001) * 0.005 + 0.01;
@@ -668,6 +671,16 @@ function drawPhysicsMode(timestamp, ctx) {
     ctx.beginPath();
     ctx.arc(boundaryCenter.x, boundaryCenter.y, boundaryRadius, 0, 2 * Math.PI);
     ctx.stroke();
+
+    // Draw Supply Slots (Visual only)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    supplySlots.forEach(slot => {
+        // Simple box representation
+        const halfW = (renderWidth / CONFIG.slotCountCols) / 2 - 5;
+        const halfH = (CONFIG.supplyBoxHeight / CONFIG.slotRows) / 2 - 5;
+        ctx.strokeRect(slot.x - halfW, slot.y - halfH, halfW * 2, halfH * 2);
+    });
 
     updateDrawParticles(ctx);
     ctx.globalCompositeOperation = 'screen';
