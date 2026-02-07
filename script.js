@@ -438,8 +438,12 @@ function render() {
             const speed = b.speed;
             if (speed < 0.5) {
                 b.plugin.stuckCounter++;
+                // Cap at slightly above trigger to prevent infinite duration build-up
+                if (b.plugin.stuckCounter > 10000) b.plugin.stuckCounter = 1200;
             } else {
-                b.plugin.stuckCounter = Math.max(0, b.plugin.stuckCounter - 1);
+                // FAST Cooldown (User said duration was too long)
+                // Decrement by 10 per frame instead of 1.
+                b.plugin.stuckCounter = Math.max(0, b.plugin.stuckCounter - 10);
             }
 
             // Trigger Angry (Frequency reduced 1/10)
@@ -488,9 +492,12 @@ function render() {
                 // Normal swim
                 const t = (timestamp + b.plugin.noiseOffset) * 0.002;
                 const angle = noise(t) * Math.PI * 2;
-                // Strength proportional to size (mass)
-                // Larger objects get proportionally stronger push to move their weight
-                const forceMag = 0.0005 * (b.mass / 5) * globalScale;
+                // Strength proportional to size (mass) SCALED QUADRATICALLY
+                // User wanted small -> weak, large -> strong.
+                // Using quadratic scale helps emphasize the difference.
+                const uniqueMult = (b.plugin.type === 'super_eye') ? 2.0 : 1.0;
+                // Base force tweaked to 0.0002 from 0.0005 to make small ones gentler
+                const forceMag = 0.0002 * b.mass * (globalScale * globalScale) * uniqueMult;
                 Body.applyForce(b, b.position, {
                     x: Math.cos(angle) * forceMag,
                     y: Math.sin(angle) * forceMag
