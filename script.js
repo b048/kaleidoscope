@@ -223,9 +223,10 @@ function createGem(x, y, isStaticInBox = false) {
         plug.noiseOffset = Math.random() * 1000;
 
         // Emotion State
-        plug.emotion = 'normal'; // normal, angry, sleep
+        plug.emotion = 'normal'; // normal, angry, sleep, tired, scared
         plug.stuckCounter = 0;
         plug.sleepCounter = 0;
+        plug.emotionTimer = 0; // Generic timer for states
     } else if (!isGlowing) {
         plug.type = 'normal';
     }
@@ -392,6 +393,16 @@ Events.on(mouseConstraint, 'startdrag', (event) => {
         Matter.Body.setStatic(event.body, false);
         event.body.label = 'gem_transition';
     }
+    // Scared when grabbed
+    if (event.body.plugin) {
+        event.body.plugin.emotion = 'scared';
+    }
+});
+Events.on(mouseConstraint, 'enddrag', (event) => {
+    // Return to normal if released
+    if (event.body.plugin) {
+        event.body.plugin.emotion = 'normal';
+    }
 });
 Composite.add(engine.world, mouseConstraint);
 
@@ -438,20 +449,30 @@ function render() {
             const speed = b.speed;
             if (speed < 0.5) {
                 b.plugin.stuckCounter++;
-                // Cap at slightly above trigger to prevent infinite duration build-up
-                if (b.plugin.stuckCounter > 10000) b.plugin.stuckCounter = 1200;
             } else {
-                // FAST Cooldown (User said duration was too long)
-                // Decrement by 10 per frame instead of 1.
-                b.plugin.stuckCounter = Math.max(0, b.plugin.stuckCounter - 10);
+                b.plugin.stuckCounter = Math.max(0, b.plugin.stuckCounter - 1);
             }
 
-            // Trigger Angry (Frequency reduced 1/10)
+            // Trigger Angry START
             // 1000 frames = ~16 sec stuck to trigger
-            if (b.plugin.stuckCounter > 1000) {
+            if (b.plugin.emotion !== 'angry' && b.plugin.emotion !== 'tired' && b.plugin.emotion !== 'scared' && b.plugin.stuckCounter > 1000) {
                 b.plugin.emotion = 'angry';
-            } else if (b.plugin.stuckCounter === 0 && b.plugin.emotion === 'angry') {
-                b.plugin.emotion = 'normal'; // Cooldown
+                b.plugin.emotionTimer = 180; // 3 seconds (60fps * 3)
+            }
+
+            // State Counters
+            if (b.plugin.emotion === 'angry') {
+                b.plugin.emotionTimer--;
+                if (b.plugin.emotionTimer <= 0) {
+                    b.plugin.emotion = 'tired';
+                    b.plugin.emotionTimer = 120; // Tired for 2 seconds
+                }
+            } else if (b.plugin.emotion === 'tired') {
+                b.plugin.emotionTimer--;
+                if (b.plugin.emotionTimer <= 0) {
+                    b.plugin.emotion = 'normal';
+                    b.plugin.stuckCounter = 0; // Reset stuck
+                }
             }
 
             // 2. Sleep Logic (Frequency reduced 1/10)
@@ -489,15 +510,15 @@ function render() {
             } else if (b.plugin.emotion === 'sleep') {
                 // Do nothing
             } else {
-                // Normal swim
+                // Normal swim (also applied to tired/scared but maybe weaker)
+                // Tired/Scared = weaker movement
+                const moodMult = (b.plugin.emotion === 'tired' || b.plugin.emotion === 'scared') ? 0.2 : 1.0;
+
                 const t = (timestamp + b.plugin.noiseOffset) * 0.002;
                 const angle = noise(t) * Math.PI * 2;
                 // Strength proportional to size (mass) SCALED QUADRATICALLY
-                // User wanted small -> weak, large -> strong.
-                // Using quadratic scale helps emphasize the difference.
                 const uniqueMult = (b.plugin.type === 'super_eye') ? 2.0 : 1.0;
-                // Base force tweaked to 0.0002 from 0.0005 to make small ones gentler
-                const forceMag = 0.0002 * b.mass * (globalScale * globalScale) * uniqueMult;
+                const forceMag = 0.0002 * b.mass * (globalScale * globalScale) * uniqueMult * moodMult;
                 Body.applyForce(b, b.position, {
                     x: Math.cos(angle) * forceMag,
                     y: Math.sin(angle) * forceMag
@@ -604,16 +625,55 @@ function render() {
             const radius = 8 * globalScale; // Scale eye too
             const center = body.position;
 
-            // Emotion: Sleep -> Closed Eye (Line)
+            // Emotion Drawing
             if (body.plugin.emotion === 'sleep') {
+                // Sleep: Flat line
                 ctx.strokeStyle = 'black';
                 ctx.lineWidth = 3;
                 ctx.beginPath();
                 ctx.moveTo(center.x - radius, center.y);
                 ctx.lineTo(center.x + radius, center.y);
                 ctx.stroke();
-                // Zzz particles?
                 if (Math.random() < 0.05) spawnParticle(center.x, center.y - 20, 'white');
+            } else if (body.plugin.emotion === 'scared') {
+                // Scared: > <
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 3;
+                // Left >
+                ctx.beginPath();
+                ctx.moveTo(center.x - radius * 0.8, center.y - radius * 0.5);
+                ctx.lineTo(center.x - radius * 0.2, center.y);
+                ctx.lineTo(center.x - radius * 0.8, center.y + radius * 0.5);
+                ctx.stroke();
+                // Right <
+                ctx.beginPath();
+                ctx.moveTo(center.x + radius * 0.8, center.y - radius * 0.5);
+                ctx.lineTo(center.x + radius * 0.2, center.y);
+                ctx.lineTo(center.x + radius * 0.8, center.y + radius * 0.5);
+                ctx.stroke();
+
+            } else if (body.plugin.emotion === 'tired') {
+                // Tired: Semi-closed eyelids (Two chords)
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
+                ctx.fill();
+
+                // Eyelids (Greyish over top)
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, radius, Math.PI, 0); // Top half
+                ctx.fill();
+
+                // Pupil (Lower down)
+                ctx.fillStyle = 'black';
+                ctx.beginPath();
+                ctx.arc(center.x, center.y + radius * 0.3, radius * 0.4, 0, 2 * Math.PI);
+                ctx.fill();
+
+                // Sigh particles?
+                if (Math.random() < 0.02) spawnParticle(center.x + radius, center.y - 10, 'rgba(100,100,255,0.5)');
+
             } else {
                 // Angry or Normal -> Open Eye
                 ctx.fillStyle = 'white';
@@ -640,15 +700,14 @@ function render() {
 
                 // Angry Eyebrows & Mouth "Muta-tto" (Sullen)
                 if (body.plugin.emotion === 'angry') {
-                    // Eyebrows (Slightly slanted/flat)
+                    // Eyebrows
                     ctx.strokeStyle = 'rgba(0,0,0,0.6)';
                     ctx.lineWidth = 2;
                     ctx.beginPath();
                     ctx.moveTo(center.x - radius, center.y - radius * 0.5);
                     ctx.lineTo(center.x + radius, center.y - radius * 0.5);
                     ctx.stroke();
-
-                    // Mouth (Flat line for sullen look)
+                    // Mouth
                     ctx.beginPath();
                     ctx.moveTo(center.x - radius * 0.5, center.y + radius * 0.5);
                     ctx.lineTo(center.x + radius * 0.5, center.y + radius * 0.5);
@@ -656,7 +715,7 @@ function render() {
                 }
 
                 // Blink
-                if (body.plugin.emotion !== 'angry') {
+                if (body.plugin.emotion === 'normal') {
                     const blinkCycle = (timestamp + body.plugin.noiseOffset) % 3000;
                     if (blinkCycle < 150) {
                         ctx.fillStyle = body.render.fillStyle;
