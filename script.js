@@ -146,8 +146,8 @@ Composite.add(engine.world, createWalls());
 
 // Supply Slots
 const supplySlots = [];
-// Safe margin from bottom to avoid browser UI
-const safeBottomMargin = 80;
+// Safe margin: 150px
+const safeBottomMargin = 150;
 const slotBaseY = renderHeight - CONFIG.supplyBoxHeight - safeBottomMargin + 100;
 const slotWidth = renderWidth / CONFIG.slotCountCols;
 const slotRowHeight = CONFIG.supplyBoxHeight / CONFIG.slotRows;
@@ -167,15 +167,12 @@ function createGem(x, y, isStaticInBox = false) {
     const rand = Math.random();
 
     // Rare Super Object: Glowing + Moving
-    // Probability: 0.025% -> 0.00025
     const isSuperRare = rand < 0.00025;
 
-    // Glowing (5%) or Super Rare
-    // Range for glowing: [0.00025, 0.05025)
+    // Glowing (5%)
     const isGlowing = isSuperRare || (rand >= 0.00025 && rand < 0.05025);
 
-    // Eye (0.5%) - Only if not glowing (unless super rare)
-    // Range for eye: [0.05025, 0.05525)
+    // Eye (0.5%)
     const isEye = isSuperRare || (!isGlowing && rand > 0.05025 && rand < 0.05525);
 
     if (isEye && !isSuperRare) {
@@ -207,7 +204,6 @@ function createGem(x, y, isStaticInBox = false) {
         restitution: 0.6,
         frictionAir: airFriction,
         render: {
-            // If it's a normal Eye, it's dark/monster colored. If Super Rare, it's Gold.
             fillStyle: (isEye && !isSuperRare) ? '#333' : color,
             strokeStyle: 'white',
             lineWidth: isGlowing ? 4 : 2
@@ -218,7 +214,6 @@ function createGem(x, y, isStaticInBox = false) {
 
     const body = Bodies.polygon(x, y, sides, size, bodyOptions);
 
-    // Heavy weight for glowing objects
     if (isGlowing) {
         Body.setDensity(body, body.density * 5);
     }
@@ -272,11 +267,17 @@ for (let i = 0; i < CONFIG.initialBeadCount; i++) {
     Composite.add(engine.world, gem);
 }
 
-// Gravity Config
+// Gravity & Permission
+const debugInfo = document.getElementById('debug-info');
+
 function handleOrientation(event) {
+    // Debug info
+    if (debugInfo && event.alpha !== null) {
+        debugInfo.textContent = `a:${event.alpha.toFixed(1)} b:${event.beta.toFixed(1)} g:${event.gamma.toFixed(1)}`;
+    }
+
     if (event.gamma === null || event.beta === null) return;
 
-    // Improved Gravity for Mobile: Use Sine
     const rad = Math.PI / 180;
     const x = Math.sin(event.gamma * rad);
     const y = Math.sin(event.beta * rad);
@@ -284,7 +285,40 @@ function handleOrientation(event) {
     engine.world.gravity.x = x * gravityScale;
     engine.world.gravity.y = y * gravityScale;
 }
-window.addEventListener('deviceorientation', handleOrientation);
+
+// Permission Request (iOS 13+)
+const startButton = document.getElementById('startButton');
+startButton.addEventListener('click', async () => {
+    // Fullscreen attempt
+    if (!document.fullscreenElement) {
+        try {
+            await document.documentElement.requestFullscreen();
+        } catch (e) {
+            console.log("Fullscreen denied", e);
+        }
+    }
+
+    // iOS Permission
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+            const response = await DeviceOrientationEvent.requestPermission();
+            if (response === 'granted') {
+                window.addEventListener('deviceorientation', handleOrientation);
+                document.getElementById('instruction-overlay').classList.add('hidden');
+            } else {
+                alert('Permission denied. Gravity will not work.');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error requesting permission: ' + e);
+        }
+    } else {
+        // Non-iOS or older devices
+        window.addEventListener('deviceorientation', handleOrientation);
+        document.getElementById('instruction-overlay').classList.add('hidden');
+    }
+});
+
 
 // Mouse Gravity
 if (!('ontouchstart' in window)) {
