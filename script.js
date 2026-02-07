@@ -269,14 +269,31 @@ for (let i = 0; i < CONFIG.initialBeadCount; i++) {
 
 // Gravity & Permission
 const debugInfo = document.getElementById('debug-info');
+let isSensorActive = false;
+let isAutoRotating = false;
+let autoRotateAngle = 0;
+
+// Auto-Rotate Control
+const autoRotateCheckbox = document.getElementById('autoRotateControl');
+if (autoRotateCheckbox) {
+    autoRotateCheckbox.addEventListener('change', (e) => {
+        isAutoRotating = e.target.checked;
+        isSensorActive = !isAutoRotating;
+    });
+}
 
 function handleOrientation(event) {
+    // If auto is on, ignore sensor (or maybe we shouldn't? User preference. Let's make Checkbox strict)
+    if (isAutoRotating) return;
+
     // Debug info
     if (debugInfo && event.alpha !== null) {
         debugInfo.textContent = `a:${event.alpha.toFixed(1)} b:${event.beta.toFixed(1)} g:${event.gamma.toFixed(1)}`;
     }
 
     if (event.gamma === null || event.beta === null) return;
+
+    isSensorActive = true;
 
     const rad = Math.PI / 180;
     const x = Math.sin(event.gamma * rad);
@@ -326,7 +343,6 @@ startButton.addEventListener('click', async () => {
         setTimeout(() => {
             if (!debugInfo.textContent.includes("a:")) {
                 // Sensor failed or not present -> Enable Auto-Rotate
-                // Alert optional? Let's just do it quietly or notify
                 console.log("No sensor data, switching to Auto-Rotate");
                 isAutoRotating = true;
                 if (autoRotateCheckbox) autoRotateCheckbox.checked = true;
@@ -339,7 +355,7 @@ startButton.addEventListener('click', async () => {
 // Mouse Gravity
 if (!('ontouchstart' in window)) {
     document.addEventListener('mousemove', (e) => {
-        if (e.buttons === 0) {
+        if (e.buttons === 0 && !isAutoRotating) {
             engine.world.gravity.x = ((e.clientX - renderWidth / 2) / (renderWidth / 2)) * gravityScale;
             engine.world.gravity.y = ((e.clientY - renderHeight / 2) / (renderHeight / 2)) * gravityScale;
         }
@@ -370,6 +386,13 @@ function noise(t) {
 function render() {
     const timestamp = Date.now();
     checkSupplyAndCleanup();
+
+    // Auto Rotation Logic (Sensorless / Manual)
+    if (isAutoRotating) {
+        autoRotateAngle += 0.005;
+        engine.world.gravity.x = Math.sin(autoRotateAngle) * gravityScale;
+        engine.world.gravity.y = Math.cos(autoRotateAngle) * gravityScale;
+    }
 
     // Update Logic
     Composite.allBodies(engine.world).forEach(b => {
