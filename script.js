@@ -325,9 +325,13 @@ startButton.addEventListener('click', async () => {
         // Check if event is actually firing
         setTimeout(() => {
             if (!debugInfo.textContent.includes("a:")) {
-                alert("Sensor event not firing. Check privacy settings or HTTPS.");
+                // Sensor failed or not present -> Enable Auto-Rotate
+                // Alert optional? Let's just do it quietly or notify
+                console.log("No sensor data, switching to Auto-Rotate");
+                isAutoRotating = true;
+                if (autoRotateCheckbox) autoRotateCheckbox.checked = true;
             }
-        }, 1000);
+        }, 2000);
     }
 });
 
