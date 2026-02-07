@@ -546,11 +546,7 @@ function render() {
 
         // Color Logic with Emotion
         let fill = body.render.fillStyle;
-        if (body.plugin && body.plugin.emotion === 'angry') {
-            fill = '#e74c3c'; // Angry Red
-            ctx.shadowColor = 'red';
-            ctx.shadowBlur = 20;
-        }
+        // Angry color change REMOVED as requested
 
         // Main Fill
         // Super Eye = Gold
