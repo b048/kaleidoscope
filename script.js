@@ -834,11 +834,13 @@ function drawPhysicsMode(timestamp, ctx) {
             // Super Saiyan Effect
             if (b.plugin.type === 'super_eye') {
                 // Intense rising particles
+                // Intense rising particles
                 for (let i = 0; i < 3; i++) { // Multiple per frame
+                    const hue = (timestamp * 0.5 + i * 30 + Math.random() * 60) % 360;
                     spawnRisingParticle(
-                        b.position.x + (Math.random() - 0.5) * 40 * globalScale,
-                        b.position.y + (Math.random() - 0.5) * 40 * globalScale,
-                        Math.random() < 0.5 ? '#FFD700' : '#FFFFFF' // Gold & White
+                        b.position.x + (Math.random() - 0.5) * 80 * globalScale, // 2x Range
+                        b.position.y + (Math.random() - 0.5) * 80 * globalScale,
+                        `hsl(${hue}, 100%, 70%)` // Rainbow
                     );
                 }
             } else {
@@ -895,9 +897,21 @@ function drawPhysicsMode(timestamp, ctx) {
         if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
             if (b.plugin.type === 'super_eye') {
                 // AURA
+                const hue = (timestamp * 0.2) % 360; // Slow rainbow cycle
                 ctx.save();
                 ctx.globalCompositeOperation = 'screen';
                 ctx.shadowBlur = 40;
+                ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+                ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${0.5 + Math.random() * 0.3})`;
+                ctx.lineWidth = 10;
+                ctx.stroke();
+                ctx.restore();
+
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+
+                // RAINBOW BODY Override
+                ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
                 ctx.shadowColor = '#FFD700'; // Gold
                 ctx.strokeStyle = `rgba(255, 215, 0, ${0.5 + Math.random() * 0.3})`;
                 ctx.lineWidth = 10;
