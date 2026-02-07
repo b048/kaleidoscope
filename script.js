@@ -442,17 +442,18 @@ function render() {
                 b.plugin.stuckCounter = Math.max(0, b.plugin.stuckCounter - 1);
             }
 
-            // Trigger Angry
-            if (b.plugin.stuckCounter > 120) { // ~2 seconds stuck
+            // Trigger Angry (Frequency reduced 1/10)
+            // 1000 frames = ~16 sec stuck to trigger
+            if (b.plugin.stuckCounter > 1000) {
                 b.plugin.emotion = 'angry';
             } else if (b.plugin.stuckCounter === 0 && b.plugin.emotion === 'angry') {
                 b.plugin.emotion = 'normal'; // Cooldown
             }
 
-            // 2. Sleep Logic
-            if (b.plugin.emotion === 'normal' && Math.random() < 0.001) {
+            // 2. Sleep Logic (Frequency reduced 1/10)
+            if (b.plugin.emotion === 'normal' && Math.random() < 0.0001) {
                 b.plugin.emotion = 'sleep';
-                b.plugin.sleepCounter = 300; // Sleep for 5s
+                b.plugin.sleepCounter = 600; // Sleep for 10s
             }
             if (b.plugin.emotion === 'sleep') {
                 b.plugin.sleepCounter--;
@@ -487,7 +488,9 @@ function render() {
                 // Normal swim
                 const t = (timestamp + b.plugin.noiseOffset) * 0.002;
                 const angle = noise(t) * Math.PI * 2;
-                const forceMag = 0.0005 * (b.mass / 5);
+                // Strength proportional to size (mass)
+                // Larger objects get proportionally stronger push to move their weight
+                const forceMag = 0.0005 * (b.mass / 5) * globalScale;
                 Body.applyForce(b, b.position, {
                     x: Math.cos(angle) * forceMag,
                     y: Math.sin(angle) * forceMag
@@ -627,6 +630,23 @@ function render() {
                 ctx.beginPath();
                 ctx.arc(center.x + lookX, center.y + lookY, radius * 0.4, 0, 2 * Math.PI);
                 ctx.fill();
+
+                // Angry Eyebrows & Mouth "Muta-tto" (Sullen)
+                if (body.plugin.emotion === 'angry') {
+                    // Eyebrows (Slightly slanted/flat)
+                    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(center.x - radius, center.y - radius * 0.5);
+                    ctx.lineTo(center.x + radius, center.y - radius * 0.5);
+                    ctx.stroke();
+
+                    // Mouth (Flat line for sullen look)
+                    ctx.beginPath();
+                    ctx.moveTo(center.x - radius * 0.5, center.y + radius * 0.5);
+                    ctx.lineTo(center.x + radius * 0.5, center.y + radius * 0.5);
+                    ctx.stroke();
+                }
 
                 // Blink
                 if (body.plugin.emotion !== 'angry') {
