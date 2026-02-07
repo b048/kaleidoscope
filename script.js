@@ -93,6 +93,10 @@ let renderHeight = window.innerHeight;
 let gravityScale = 1;
 let airFriction = 0.05;
 let wallRestitution = 0.6;
+let gravityScale = 1;
+let airFriction = 0.05;
+let wallRestitution = 0.6;
+let gemRestitution = 0.6;
 let globalScale = 1.0;
 
 // UI Listeners for Physics
@@ -113,6 +117,15 @@ document.getElementById('restitutionControl').addEventListener('input', (e) => {
     Composite.allBodies(engine.world).forEach(body => {
         if (body.label === 'wall') {
             body.restitution = wallRestitution;
+        }
+    });
+});
+document.getElementById('gemRestitutionControl').addEventListener('input', (e) => {
+    gemRestitution = parseFloat(e.target.value);
+    document.getElementById('val-gem-restitution').textContent = gemRestitution;
+    Composite.allBodies(engine.world).forEach(body => {
+        if (!body.isStatic && body.label !== 'gem_supply') {
+            body.restitution = gemRestitution;
         }
     });
 });
@@ -261,8 +274,8 @@ function createGem(x, y, isStaticInBox = false) {
     }
 
     const bodyOptions = {
-        friction: 0.1,
-        restitution: 0.6,
+        friction: 0.005,
+        restitution: gemRestitution,
         frictionAir: airFriction,
         render: {
             fillStyle: color,
