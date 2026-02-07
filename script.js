@@ -289,6 +289,11 @@ function handleOrientation(event) {
 // Permission Request (iOS 13+)
 const startButton = document.getElementById('startButton');
 startButton.addEventListener('click', async () => {
+    // Check for Secure Context (HTTPS)
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        alert("Warning: Sensors might require HTTPS. If this fails, try the GitHub Pages URL.");
+    }
+
     // Fullscreen attempt
     if (!document.fullscreenElement) {
         try {
@@ -306,7 +311,7 @@ startButton.addEventListener('click', async () => {
                 window.addEventListener('deviceorientation', handleOrientation);
                 document.getElementById('instruction-overlay').classList.add('hidden');
             } else {
-                alert('Permission denied. Gravity will not work.');
+                alert('Permission denied (iOS). Gravity will not work.');
             }
         } catch (e) {
             console.error(e);
@@ -316,6 +321,13 @@ startButton.addEventListener('click', async () => {
         // Non-iOS or older devices
         window.addEventListener('deviceorientation', handleOrientation);
         document.getElementById('instruction-overlay').classList.add('hidden');
+
+        // Check if event is actually firing
+        setTimeout(() => {
+            if (!debugInfo.textContent.includes("a:")) {
+                alert("Sensor event not firing. Check privacy settings or HTTPS.");
+            }
+        }, 1000);
     }
 });
 
