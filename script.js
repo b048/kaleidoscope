@@ -93,10 +93,7 @@ let renderHeight = window.innerHeight;
 let gravityScale = 1;
 let airFriction = 0.05;
 let wallRestitution = 0.6;
-let gravityScale = 1;
-let airFriction = 0.05;
-let wallRestitution = 0.6;
-let gemRestitution = 0.6;
+
 let globalScale = 1.0;
 
 // UI Listeners for Physics

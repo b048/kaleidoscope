@@ -196,7 +196,7 @@ canvas {
 }
 
 body.settings-open .settings-panel {
-    max-height: 400px;
+    max-height: 600px;
     opacity: 1;
     padding-bottom: 20px;
     visibility: visible;
