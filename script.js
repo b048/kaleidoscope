@@ -346,6 +346,7 @@ startButton.addEventListener('click', async () => {
                 console.log("No sensor data, switching to Auto-Rotate");
                 isAutoRotating = true;
                 if (autoRotateCheckbox) autoRotateCheckbox.checked = true;
+                if (debugInfo) debugInfo.style.display = 'none';
             }
         }, 2000);
     }
