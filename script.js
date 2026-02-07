@@ -197,15 +197,23 @@ function createGem(x, y, isStaticInBox = false) {
     const sides = Math.floor(Common.random(3, 8));
     let color = Common.choose(CONFIG.gemColors);
 
+    // Strict Probabilities (User Request)
+    // Both (Super Rare): 0.025% (0.00025)
+    // Eye: 0.5% (0.005)
+    // Glowing: 5.0% (0.05)
+
     const rand = Math.random();
 
-    // Rare Super Object: Glowing + Moving
-    const isSuperRare = rand < 0.0005;
-    const isGlowing = isSuperRare || (rand >= 0.0005 && rand < 0.0505);
-    const isEye = isSuperRare || (!isGlowing && rand > 0.0505 && rand < 0.1005);
+    // Strict buckets
+    const isSuperRare = rand < 0.00025;
+    const isEyeOnly = rand >= 0.00025 && rand < 0.00525;
+    const isGlowingOnly = rand >= 0.00525 && rand < 0.05525;
+
+    const isGlowing = isSuperRare || isGlowingOnly;
+    const isEye = isSuperRare || isEyeOnly;
 
     // Eye colors
-    if (isEye && !isSuperRare) {
+    if (isEyeOnly) {
         color = Common.choose(CONFIG.gemColors);
     }
     if (isSuperRare) {
@@ -526,8 +534,10 @@ function drawPhysicsMode(timestamp, ctx) {
         // --- Eye Logic (Emotions & AI) ---
         if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye') && !b.isStatic && b.label !== 'gem_supply') {
 
-            // --- AI: Scan Neighbors ---
+            // --- 1. AI: Scan Neighbors (Find Fascination Target) ---
             const scanRange = 250 * globalScale;
+            let nearestGlowing = null;
+            let nearestDist = Infinity;
 
             bodies.forEach(other => {
                 if (b === other || other.isStatic || other.label === 'gem_supply') return;
@@ -536,6 +546,12 @@ function drawPhysicsMode(timestamp, ctx) {
                 const dist = Vector.magnitude(dVector);
 
                 if (dist < scanRange && other.plugin) {
+                    // Check for Fascination (Must be glowing type)
+                    if ((other.plugin.type === 'glowing' || other.plugin.type === 'super_eye') && dist < nearestDist) {
+                        nearestGlowing = other;
+                        nearestDist = dist;
+                    }
+
                     const dir = Vector.normalise(dVector);
 
                     // 1. Same Color -> Attract to Eat (Weak attraction)
@@ -554,6 +570,15 @@ function drawPhysicsMode(timestamp, ctx) {
                     }
                 }
             });
+
+            // Set State
+            if (nearestGlowing) {
+                b.plugin.isFascinated = true;
+                b.plugin.fascinatedTarget = nearestGlowing;
+            } else {
+                b.plugin.isFascinated = false;
+                b.plugin.fascinatedTarget = null;
+            }
 
 
             // 1. Stuck Check -> Angular
@@ -591,7 +616,8 @@ function drawPhysicsMode(timestamp, ctx) {
             }
 
             // 2. Sleep Logic
-            if (b.plugin.emotion === 'normal' && Math.random() < 0.0001) {
+            // If fascinated, don't sleep
+            if (b.plugin.emotion === 'normal' && !b.plugin.isFascinated && Math.random() < 0.0001) {
                 b.plugin.emotion = 'sleep';
                 b.plugin.sleepCounter = 600;
             }
@@ -622,16 +648,23 @@ function drawPhysicsMode(timestamp, ctx) {
             } else {
                 // --- Organic Swim Logic ---
                 let targetAngle = 0;
-                const t = (timestamp + b.plugin.noiseOffset) * 0.001;
-                const noiseAngle = noise(t) * Math.PI * 4;
 
-                let desiredAngle = noiseAngle;
-                const speed = Vector.magnitude(b.velocity);
-                if (speed > 0.1) {
-                    desiredAngle = Math.atan2(b.velocity.y, b.velocity.x);
+                if (b.plugin.isFascinated && b.plugin.fascinatedTarget) {
+                    // Turn towards glowing object
+                    const d = Vector.sub(b.plugin.fascinatedTarget.position, b.position);
+                    targetAngle = Math.atan2(d.y, d.x);
+                } else {
+                    const t = (timestamp + b.plugin.noiseOffset) * 0.001;
+                    const noiseAngle = noise(t) * Math.PI * 4;
+                    targetAngle = noiseAngle;
+
+                    const speed = Vector.magnitude(b.velocity);
+                    if (speed > 0.1) {
+                        targetAngle = Math.atan2(b.velocity.y, b.velocity.x);
+                    }
                 }
 
-                let diff = desiredAngle - b.angle;
+                let diff = targetAngle - b.angle;
                 while (diff < -Math.PI) diff += Math.PI * 2;
                 while (diff > Math.PI) diff -= Math.PI * 2;
 
@@ -685,11 +718,11 @@ function drawPhysicsMode(timestamp, ctx) {
     updateDrawParticles(ctx);
     ctx.globalCompositeOperation = 'screen';
 
-    bodies.forEach(body => {
-        if (body.label === 'wall') return;
+    bodies.forEach(b => {
+        if (b.label === 'wall') return;
 
         ctx.beginPath();
-        const vertices = body.vertices;
+        const vertices = b.vertices;
         ctx.moveTo(vertices[0].x, vertices[0].y);
         for (let j = 1; j < vertices.length; j += 1) {
             ctx.lineTo(vertices[j].x, vertices[j].y);
@@ -698,11 +731,11 @@ function drawPhysicsMode(timestamp, ctx) {
         ctx.closePath();
 
         // Color Logic with Emotion
-        let fill = body.render.fillStyle;
+        let fill = b.render.fillStyle;
 
         // Main Fill
-        if (body.plugin && (body.plugin.type === 'eye' || body.plugin.type === 'super_eye')) {
-            if (body.plugin.type === 'super_eye') {
+        if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
+            if (b.plugin.type === 'super_eye') {
                 ctx.shadowBlur = 30;
                 ctx.shadowColor = 'gold';
             }
@@ -712,7 +745,7 @@ function drawPhysicsMode(timestamp, ctx) {
             ctx.stroke();
             ctx.globalCompositeOperation = 'screen';
         } else {
-            if (body.plugin && body.plugin.type === 'glowing') {
+            if (b.plugin && b.plugin.type === 'glowing') {
                 ctx.shadowBlur = 15;
                 ctx.shadowColor = 'white';
                 ctx.fillStyle = fill;
@@ -721,7 +754,7 @@ function drawPhysicsMode(timestamp, ctx) {
                 ctx.fillStyle = fill;
             }
 
-            ctx.strokeStyle = body.render.strokeStyle || 'rgba(255,255,255,0.5)';
+            ctx.strokeStyle = b.render.strokeStyle || 'rgba(255,255,255,0.5)';
             ctx.lineWidth = 2;
             ctx.fill();
             ctx.stroke();
@@ -729,11 +762,11 @@ function drawPhysicsMode(timestamp, ctx) {
         }
 
         // Inner Details (Complementary)
-        if (body.plugin && (body.plugin.type === 'glowing' || body.plugin.type === 'super_eye')) {
-            if (body.plugin.type !== 'super_eye' && body.plugin.emotion !== 'angry') {
-                ctx.fillStyle = body.plugin.complementary;
+        if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye')) {
+            if (b.plugin.type !== 'super_eye' && b.plugin.emotion !== 'angry') {
+                ctx.fillStyle = b.plugin.complementary;
                 ctx.globalCompositeOperation = 'source-over';
-                const center = body.position;
+                const center = b.position;
                 const scale = 0.5;
                 ctx.beginPath();
                 ctx.moveTo(center.x + (vertices[0].x - center.x) * scale, center.y + (vertices[0].y - center.y) * scale);
@@ -747,26 +780,32 @@ function drawPhysicsMode(timestamp, ctx) {
         }
 
         // Eye Details
-        if (body.plugin && (body.plugin.type === 'eye' || body.plugin.type === 'super_eye')) {
+        if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye') && !b.isStatic && b.label !== 'gem_supply') {
             ctx.globalCompositeOperation = 'source-over';
-            const radius = 7;
-            const center = body.position;
 
-            if (body.plugin.emotion === 'sleep') {
+            // Dynamic Size Calculation
+            const bounds = b.bounds;
+            const w = bounds.max.x - bounds.min.x;
+            const h = bounds.max.y - bounds.min.y;
+            const radius = Math.min(w, h) * 0.25; // 25% of body size (scales with growth)
+
+            const center = b.position;
+
+            if (b.plugin.emotion === 'sleep') {
                 ctx.strokeStyle = 'black';
                 ctx.lineWidth = 3 * globalScale;
                 ctx.beginPath();
                 ctx.moveTo(center.x - radius, center.y);
                 ctx.lineTo(center.x + radius, center.y);
                 ctx.stroke();
-            } else if (body.plugin.emotion === 'scared') {
+            } else if (b.plugin.emotion === 'scared') {
                 ctx.strokeStyle = 'black';
                 ctx.lineWidth = 3 * globalScale;
                 ctx.beginPath();
                 ctx.moveTo(center.x - radius, center.y);
                 ctx.lineTo(center.x + radius, center.y);
                 ctx.stroke();
-            } else if (body.plugin.emotion === 'tired') {
+            } else if (b.plugin.emotion === 'tired') {
                 ctx.fillStyle = 'white';
                 ctx.beginPath();
                 ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
@@ -781,8 +820,8 @@ function drawPhysicsMode(timestamp, ctx) {
                 ctx.fill();
             } else {
                 let isBlinking = false;
-                if (body.plugin.emotion === 'normal') {
-                    const blinkCycle = (timestamp + body.plugin.noiseOffset) % 3000;
+                if (b.plugin.emotion === 'normal' && !b.plugin.isFascinated) {
+                    const blinkCycle = (timestamp + b.plugin.noiseOffset) % 3000;
                     if (blinkCycle < 150) isBlinking = true;
                 }
 
@@ -794,44 +833,78 @@ function drawPhysicsMode(timestamp, ctx) {
                     ctx.lineTo(center.x + radius, center.y);
                     ctx.stroke();
                 } else {
+                    // Open Eye
                     ctx.fillStyle = 'white';
                     ctx.beginPath();
                     ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
                     ctx.fill();
 
-                    let lookX = 0, lookY = 0;
-                    if (body.plugin.emotion === 'angry') {
-                        lookX = (Math.random() - 0.5) * 2;
-                        lookY = (Math.random() - 0.5) * 2;
+                    // Look Target Calculation
+                    let targetLookX = 0, targetLookY = 0;
+
+                    if (b.plugin.isFascinated && b.plugin.fascinatedTarget) {
+                        const d = Vector.sub(b.plugin.fascinatedTarget.position, b.position);
+                        const dist = Vector.magnitude(d);
+                        const lookMag = Math.min(dist, 100) / 100; // Normalize gaze intensity by distance
+                        const vNorm = Vector.normalise(d);
+                        targetLookX = vNorm.x * (radius * 0.6) * lookMag;
+                        targetLookY = vNorm.y * (radius * 0.6) * lookMag;
+                    } else if (b.plugin.emotion === 'angry') {
+                        targetLookX = (Math.random() - 0.5) * radius * 0.5;
+                        targetLookY = (Math.random() - 0.5) * radius * 0.5;
                     } else {
-                        const vel = body.velocity;
+                        const vel = b.velocity;
                         const speed = Vector.magnitude(vel);
                         if (speed > 0.5) {
                             const vNorm = Vector.normalise(vel);
-                            lookX = vNorm.x * 4 * globalScale;
-                            lookY = vNorm.y * 4 * globalScale;
+                            targetLookX = vNorm.x * (radius * 0.5);
+                            targetLookY = vNorm.y * (radius * 0.5);
                         } else {
-                            const lookTime = (timestamp + body.plugin.eyeOffset) / 1000;
-                            lookX = Math.cos(lookTime) * 2 * globalScale;
-                            lookY = Math.sin(lookTime) * 2 * globalScale;
+                            const lookTime = (timestamp + b.plugin.eyeOffset) / 2000; // Slower idleness
+                            targetLookX = Math.cos(lookTime) * (radius * 0.3);
+                            targetLookY = Math.sin(lookTime) * (radius * 0.3);
                         }
                     }
 
-                    ctx.fillStyle = (body.plugin.type === 'super_eye') ? 'red' : 'black';
+                    // Smooth Pupil Movement (Lerp)
+                    const lerpFactor = 0.15; // Smoothness
+                    b.plugin.lookX = (b.plugin.lookX || 0) * (1 - lerpFactor) + targetLookX * lerpFactor;
+                    b.plugin.lookY = (b.plugin.lookY || 0) * (1 - lerpFactor) + targetLookY * lerpFactor;
+
+                    ctx.fillStyle = (b.plugin.type === 'super_eye') ? '#FF3333' : 'black'; // Red if super eye
                     ctx.beginPath();
-                    ctx.arc(center.x + lookX, center.y + lookY, radius * 0.4, 0, 2 * Math.PI);
+                    ctx.arc(center.x + b.plugin.lookX, center.y + b.plugin.lookY, radius * 0.4, 0, 2 * Math.PI);
                     ctx.fill();
 
-                    if (body.plugin.emotion === 'angry') {
+                    // Sparkle if fascinating
+                    if (b.plugin.isFascinated) {
+                        ctx.fillStyle = 'white';
+                        const sparkleX = center.x + b.plugin.lookX - radius * 0.3;
+                        const sparkleY = center.y + b.plugin.lookY - radius * 0.3;
+
+                        const sparkleSize = radius * 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(sparkleX, sparkleY - sparkleSize);
+                        ctx.lineTo(sparkleX + sparkleSize * 0.3, sparkleY);
+                        ctx.lineTo(sparkleX, sparkleY + sparkleSize);
+                        ctx.lineTo(sparkleX - sparkleSize * 0.3, sparkleY);
+                        ctx.fill();
+
+                        ctx.beginPath();
+                        ctx.moveTo(sparkleX - sparkleSize, sparkleY);
+                        ctx.lineTo(sparkleX, sparkleY - sparkleSize * 0.3);
+                        ctx.lineTo(sparkleX + sparkleSize, sparkleY);
+                        ctx.lineTo(sparkleX, sparkleY + sparkleSize * 0.3);
+                        ctx.fill();
+                    }
+
+                    if (b.plugin.emotion === 'angry') {
                         ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-                        ctx.lineWidth = 2;
+                        ctx.lineWidth = radius * 0.2;
+                        // ... angry eyebrows ...
                         ctx.beginPath();
                         ctx.moveTo(center.x - radius, center.y - radius * 0.5);
                         ctx.lineTo(center.x + radius, center.y - radius * 0.5);
-                        ctx.stroke();
-                        ctx.beginPath();
-                        ctx.moveTo(center.x - radius * 0.5, center.y + radius * 0.5);
-                        ctx.lineTo(center.x + radius * 0.5, center.y + radius * 0.5);
                         ctx.stroke();
                     }
                 }
