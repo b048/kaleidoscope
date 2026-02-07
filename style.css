@@ -60,7 +60,30 @@ canvas {
     opacity: 0.8;
 }
 
-#controls {
+.button-row {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 5px;
+}
+
+.mode-btn {
+    flex: 1;
+    padding: 5px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    cursor: pointer;
+    font-size: 0.8rem;
+    border-radius: 4px;
+}
+
+.mode-btn.active {
+    background: rgba(255, 255, 255, 0.4);
+    border-color: white;
+    font-weight: bold;
+}
+
+.control-group {
     position: absolute;
     top: 10px;
     left: 10px;

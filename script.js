@@ -13,7 +13,7 @@ const Engine = Matter.Engine,
 
 // Configuration
 const CONFIG = {
-    initialBeadCount: 15, // Increased slightly for more interaction
+    initialBeadCount: 15,
     wallThickness: 100,
     gemColors: [
         'rgba(255, 0, 0, 0.7)',    // Red
@@ -28,6 +28,14 @@ const CONFIG = {
     slotRows: 2,
     particleCount: 50
 };
+
+// --- Global State & Modes ---
+let currentMode = 'physics'; // 'physics', 'audio', 'fractal'
+let isSensorActive = false;
+let isAutoRotating = true;
+let autoRotateAngle = 0;
+
+// --- Ends Global State ---
 
 // --- Particles System ---
 const particles = [];
@@ -87,12 +95,7 @@ let airFriction = 0.05;
 let wallRestitution = 0.6;
 let globalScale = 1.0;
 
-// Global state
-let isSensorActive = false;
-let isAutoRotating = true; // Default ON
-let autoRotateAngle = 0;
-
-// Elements & Listeners
+// UI Listeners for Physics
 document.getElementById('gravityControl').addEventListener('input', (e) => {
     gravityScale = parseFloat(e.target.value);
 });
@@ -199,18 +202,18 @@ function createGem(x, y, isStaticInBox = false) {
     // Rare Super Object: Glowing + Moving
     const isSuperRare = rand < 0.0005;
     const isGlowing = isSuperRare || (rand >= 0.0005 && rand < 0.0505);
-    const isEye = isSuperRare || (!isGlowing && rand > 0.0505 && rand < 0.1005); // Increased eye probability
+    const isEye = isSuperRare || (!isGlowing && rand > 0.0505 && rand < 0.1005);
 
     // Eye colors
     if (isEye && !isSuperRare) {
-        color = Common.choose(CONFIG.gemColors); // Can be any color now
+        color = Common.choose(CONFIG.gemColors);
     }
     if (isSuperRare) {
         color = '#FFD700'; // Gold
     }
 
     const plug = {};
-    plug.color = color; // Store color for matching
+    plug.color = color;
     plug.complementary = getComplementaryColor(color);
 
     if (isGlowing) {
@@ -308,26 +311,17 @@ Events.on(engine, 'collisionStart', (event) => {
         const bodyA = pairs[i].bodyA;
         const bodyB = pairs[i].bodyB;
 
-        // Skip static
         if (bodyA.isStatic || bodyB.isStatic) continue;
-        // Skip walls
         if (bodyA.label === 'wall' || bodyB.label === 'wall') continue;
-
-        // Check if one is Eye and they match color
-        // Simple Logic: Only Eyes eat non-eyes (or smaller eyes)
-        // Let's make it: Eye eats matching color Gem (if Gem !Eye or smaller)
 
         const typeA = bodyA.plugin && (bodyA.plugin.type === 'eye' || bodyA.plugin.type === 'super_eye');
         const typeB = bodyB.plugin && (bodyB.plugin.type === 'eye' || bodyB.plugin.type === 'super_eye');
 
-        if (!typeA && !typeB) continue; // No eyes involved
+        if (!typeA && !typeB) continue;
 
-        // Determine Eater and Eaten
         let eater = null;
         let eaten = null;
 
-        // If both are eyes, larger eats smaller? Or ignore? Let's ignore cannibalism for now to keep population up.
-        // Actually user said "eat same colored block".
         if (typeA && !typeB && bodyA.plugin.color === bodyB.plugin.color) {
             eater = bodyA; eaten = bodyB;
         } else if (typeB && !typeA && bodyB.plugin.color === bodyA.plugin.color) {
@@ -336,19 +330,20 @@ Events.on(engine, 'collisionStart', (event) => {
 
         if (eater && eaten) {
             // Eat!
-            // Grow Eater
-            const growthFactor = 1.05;
+            // Grow Eater: 1/10th of eaten area
+            const areaEaten = eaten.area;
+            const areaEater = eater.area;
+            const growthFactor = Math.sqrt(1 + (areaEaten * 0.1) / areaEater);
+
             // Limit max size
-            if (eater.area < 20000) { // arbitrary cap
+            if (eater.area < 30000) {
                 Body.scale(eater, growthFactor, growthFactor);
                 eater.mass *= growthFactor;
             }
 
-            // FX
             spawnParticle(eaten.position.x, eaten.position.y, eaten.plugin.color);
             spawnParticle(eaten.position.x, eaten.position.y, 'white');
 
-            // Remove Eaten
             Composite.remove(engine.world, eaten);
         }
     }
@@ -419,13 +414,6 @@ startButton.addEventListener('click', async () => {
         // Non-iOS
         window.addEventListener('deviceorientation', handleOrientation);
         document.getElementById('instruction-overlay').classList.add('hidden');
-
-        // Check sensor
-        setTimeout(() => {
-            if (!isSensorActive && !isAutoRotating) {
-                console.log("No sensor data.");
-            }
-        }, 2000);
     }
 });
 
@@ -433,7 +421,7 @@ startButton.addEventListener('click', async () => {
 // Mouse Gravity
 if (!('ontouchstart' in window)) {
     document.addEventListener('mousemove', (e) => {
-        if (e.buttons === 0 && !isAutoRotating) {
+        if (e.buttons === 0 && !isAutoRotating && currentMode === 'physics') {
             engine.world.gravity.x = ((e.clientX - renderWidth / 2) / (renderWidth / 2)) * gravityScale;
             engine.world.gravity.y = ((e.clientY - renderHeight / 2) / (renderHeight / 2)) * gravityScale;
         }
@@ -470,11 +458,41 @@ function noise(t) {
     return Math.sin(t) + Math.sin(2.2 * t + 5.5) * 0.5 + Math.sin(1.2 * t + 3.0) * 0.2;
 }
 
-// Render Loop
-function render() {
-    const timestamp = Date.now();
-    checkSupplyAndCleanup();
+// ----------------------------------------------------------------------
+// --- AUDIO ENGINE ---
+// ----------------------------------------------------------------------
+let audioContext = null;
+let analyser = null;
+let dataArray = null;
+let isAudioInitialized = false;
 
+async function setupAudio() {
+    if (isAudioInitialized) return;
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        dataArray = new Uint8Array(bufferLength);
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+        // Note: Do NOT connect to destination (speakers) to avoid feedback loop!
+
+        isAudioInitialized = true;
+        console.log("Audio Initialized");
+    } catch (err) {
+        console.error("Audio Setup Failed", err);
+        alert("Microphone access needed for Audio Mode");
+    }
+}
+
+// ----------------------------------------------------------------------
+// --- RENDER MODES ---
+// ----------------------------------------------------------------------
+
+function drawPhysicsMode(timestamp, ctx) {
     // Auto Rotation Logic
     if (isAutoRotating) {
         const speedVar = Math.sin(timestamp * 0.001) * 0.005 + 0.01;
@@ -497,7 +515,7 @@ function render() {
     }
 
     // Update Logic & AI Behavior
-    const bodies = Composite.allBodies(engine.world); // Cache list
+    const bodies = Composite.allBodies(engine.world);
 
     bodies.forEach(b => {
         if (b.label === 'gem' || b.label === 'gem_transition') b.frictionAir = airFriction;
@@ -524,14 +542,12 @@ function render() {
                     }
                     // 2. Complementary Color -> Place around self (Spring-like)
                     else if (other.plugin.color === b.plugin.complementary) {
-                        // Desired orbital distance
-                        const idealDist = 80 * globalScale;
+                        const idealDist = 90 * globalScale;
                         const delta = dist - idealDist;
-                        // If too far, attract. If too close, repel.
-                        const forceMag = delta * 0.00001 * b.mass; // Spring constant
+                        const forceMag = delta * 0.00005 * b.mass;
                         const force = Vector.mult(dir, forceMag);
-                        Body.applyForce(other, other.position, Vector.neg(force)); // Pull other to me? or me to other? Let's interact
-                        Body.applyForce(b, b.position, force);
+                        Body.applyForce(other, other.position, Vector.neg(force));
+                        Body.applyForce(b, b.position, Vector.mult(force, 0.1));
                     }
                 }
             });
@@ -564,6 +580,11 @@ function render() {
                     b.plugin.emotion = 'normal';
                     b.plugin.stuckCounter = 0;
                 }
+            } else if (b.plugin.emotion === 'scared') {
+                Body.applyForce(b, b.position, {
+                    x: (Math.random() - 0.5) * 0.01 * b.mass,
+                    y: (Math.random() - 0.5) * 0.01 * b.mass
+                });
             }
 
             // 2. Sleep Logic
@@ -578,17 +599,15 @@ function render() {
 
             // Action based on emotion
             if (b.plugin.emotion === 'angry') {
-                // Explode / Push neighbors (MILDER)
                 if (Math.random() < 0.1) {
                     if (Math.random() < 0.3) spawnParticle(b.position.x, b.position.y, 'rgba(255,255,255,0.5)');
-
                     Composite.allBodies(engine.world).forEach(other => {
                         if (other !== b && !other.isStatic) {
                             const d = Vector.sub(other.position, b.position);
                             const dist = Vector.magnitude(d);
-                            if (dist < 150) { // Reduced range
+                            if (dist < 150) {
                                 let force = Vector.normalise(d);
-                                force = Vector.mult(force, 0.015); // Much weaker push
+                                force = Vector.mult(force, 0.015);
                                 Body.applyForce(other, other.position, force);
                             }
                         }
@@ -596,18 +615,36 @@ function render() {
                     Body.applyForce(b, b.position, { x: (Math.random() - 0.5) * 0.02, y: (Math.random() - 0.5) * 0.02 });
                 }
             } else if (b.plugin.emotion === 'sleep') {
-                // Do nothing
+                // Drift
             } else {
-                // Normal swim
-                const moodMult = (b.plugin.emotion === 'tired' || b.plugin.emotion === 'scared') ? 0.2 : 1.0;
-                const t = (timestamp + b.plugin.noiseOffset) * 0.002;
-                const angle = noise(t) * Math.PI * 2;
-                const uniqueMult = (b.plugin.type === 'super_eye') ? 2.0 : 1.0;
-                const forceMag = 0.0002 * b.mass * (globalScale * globalScale) * uniqueMult * moodMult;
-                Body.applyForce(b, b.position, {
-                    x: Math.cos(angle) * forceMag,
-                    y: Math.sin(angle) * forceMag
-                });
+                // --- Organic Swim Logic ---
+                let targetAngle = 0;
+                const t = (timestamp + b.plugin.noiseOffset) * 0.001;
+                const noiseAngle = noise(t) * Math.PI * 4;
+
+                let desiredAngle = noiseAngle;
+                const speed = Vector.magnitude(b.velocity);
+                if (speed > 0.1) {
+                    desiredAngle = Math.atan2(b.velocity.y, b.velocity.x);
+                }
+
+                let diff = desiredAngle - b.angle;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+
+                b.torque = diff * 0.0005 * b.mass * (b.plugin.type === 'super_eye' ? 5 : 1);
+
+                const swimCycle = Math.sin(timestamp * 0.005 + b.plugin.noiseOffset);
+                if (swimCycle > 0) {
+                    const kickStrength = 0.0003 * b.mass * (globalScale ** 1.5);
+                    const moodMult = (b.plugin.emotion === 'tired' || b.plugin.emotion === 'scared') ? 0.3 : 1.0;
+                    const force = {
+                        x: Math.cos(b.angle) * kickStrength * moodMult,
+                        y: Math.sin(b.angle) * kickStrength * moodMult
+                    };
+                    Body.applyForce(b, b.position, force);
+                    b.torque += Math.sin(timestamp * 0.02) * 0.0001 * b.mass;
+                }
             }
         }
 
@@ -625,10 +662,7 @@ function render() {
 
     Engine.update(engine, 1000 / 60);
 
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, renderWidth, renderHeight);
-
-    // Boundary Link
+    // Draw Boundary
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -654,7 +688,6 @@ function render() {
         let fill = body.render.fillStyle;
 
         // Main Fill
-        // Super Eye = Gold
         if (body.plugin && (body.plugin.type === 'eye' || body.plugin.type === 'super_eye')) {
             if (body.plugin.type === 'super_eye') {
                 ctx.shadowBlur = 30;
@@ -703,117 +736,300 @@ function render() {
         // Eye Details
         if (body.plugin && (body.plugin.type === 'eye' || body.plugin.type === 'super_eye')) {
             ctx.globalCompositeOperation = 'source-over';
-            const radius = 8 * globalScale; // Scale eye too
+            const radius = 7;
             const center = body.position;
 
-            // Emotion Drawing
             if (body.plugin.emotion === 'sleep') {
-                // Sleep: Flat line
                 ctx.strokeStyle = 'black';
-                ctx.lineWidth = 3;
+                ctx.lineWidth = 3 * globalScale;
                 ctx.beginPath();
                 ctx.moveTo(center.x - radius, center.y);
                 ctx.lineTo(center.x + radius, center.y);
                 ctx.stroke();
-                if (Math.random() < 0.05) spawnParticle(center.x, center.y - 20, 'white');
             } else if (body.plugin.emotion === 'scared') {
-                // Scared: > <
                 ctx.strokeStyle = 'black';
-                ctx.lineWidth = 3;
+                ctx.lineWidth = 3 * globalScale;
                 ctx.beginPath();
-                ctx.moveTo(center.x - radius * 0.8, center.y - radius * 0.5);
-                ctx.lineTo(center.x - radius * 0.2, center.y);
-                ctx.lineTo(center.x - radius * 0.8, center.y + radius * 0.5);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(center.x + radius * 0.8, center.y - radius * 0.5);
-                ctx.lineTo(center.x + radius * 0.2, center.y);
-                ctx.lineTo(center.x + radius * 0.8, center.y + radius * 0.5);
+                ctx.moveTo(center.x - radius, center.y);
+                ctx.lineTo(center.x + radius, center.y);
                 ctx.stroke();
             } else if (body.plugin.emotion === 'tired') {
-                // Tired
                 ctx.fillStyle = 'white';
                 ctx.beginPath();
                 ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
                 ctx.fill();
-                ctx.fillStyle = 'rgba(0,0,0,0.3)'; // Eyelids
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
                 ctx.beginPath();
                 ctx.arc(center.x, center.y, radius, Math.PI, 0);
                 ctx.fill();
-                ctx.fillStyle = 'black'; // Pupil
+                ctx.fillStyle = 'black';
                 ctx.beginPath();
                 ctx.arc(center.x, center.y + radius * 0.3, radius * 0.4, 0, 2 * Math.PI);
                 ctx.fill();
-                if (Math.random() < 0.02) spawnParticle(center.x + radius, center.y - 10, 'rgba(100,100,255,0.5)');
             } else {
-                // Normal / Angry -> Look at velocity
-                ctx.fillStyle = 'white';
-                ctx.beginPath();
-                ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
-                ctx.fill();
-
-                // LOOK AT VELOCITY LOGIC
-                let lookX = 0, lookY = 0;
-                if (body.plugin.emotion === 'angry') {
-                    lookX = (Math.random() - 0.5) * 2;
-                    lookY = (Math.random() - 0.5) * 2;
-                } else {
-                    // Look along velocity vector
-                    const vel = body.velocity;
-                    const speed = Vector.magnitude(vel);
-                    if (speed > 0.5) { // Only look if moving somewhat
-                        const vNorm = Vector.normalise(vel);
-                        lookX = vNorm.x * 4 * globalScale; // Range of looking
-                        lookY = vNorm.y * 4 * globalScale;
-                    } else {
-                        // Idle look
-                        const lookTime = (timestamp + body.plugin.eyeOffset) / 1000;
-                        lookX = Math.cos(lookTime) * 2 * globalScale;
-                        lookY = Math.sin(lookTime) * 2 * globalScale;
-                    }
-                }
-
-                ctx.fillStyle = (body.plugin.type === 'super_eye') ? 'red' : 'black';
-                ctx.beginPath();
-                ctx.arc(center.x + lookX, center.y + lookY, radius * 0.4, 0, 2 * Math.PI);
-                ctx.fill();
-
-                // Angry Features
-                if (body.plugin.emotion === 'angry') {
-                    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(center.x - radius, center.y - radius * 0.5);
-                    ctx.lineTo(center.x + radius, center.y - radius * 0.5);
-                    ctx.stroke();
-                    ctx.beginPath();
-                    ctx.moveTo(center.x - radius * 0.5, center.y + radius * 0.5);
-                    ctx.lineTo(center.x + radius * 0.5, center.y + radius * 0.5);
-                    ctx.stroke();
-                }
-
-                // Blink
+                let isBlinking = false;
                 if (body.plugin.emotion === 'normal') {
                     const blinkCycle = (timestamp + body.plugin.noiseOffset) % 3000;
-                    if (blinkCycle < 150) {
-                        ctx.fillStyle = body.render.fillStyle;
+                    if (blinkCycle < 150) isBlinking = true;
+                }
+
+                if (isBlinking) {
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 3 * globalScale;
+                    ctx.beginPath();
+                    ctx.moveTo(center.x - radius, center.y);
+                    ctx.lineTo(center.x + radius, center.y);
+                    ctx.stroke();
+                } else {
+                    ctx.fillStyle = 'white';
+                    ctx.beginPath();
+                    ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    let lookX = 0, lookY = 0;
+                    if (body.plugin.emotion === 'angry') {
+                        lookX = (Math.random() - 0.5) * 2;
+                        lookY = (Math.random() - 0.5) * 2;
+                    } else {
+                        const vel = body.velocity;
+                        const speed = Vector.magnitude(vel);
+                        if (speed > 0.5) {
+                            const vNorm = Vector.normalise(vel);
+                            lookX = vNorm.x * 4 * globalScale;
+                            lookY = vNorm.y * 4 * globalScale;
+                        } else {
+                            const lookTime = (timestamp + body.plugin.eyeOffset) / 1000;
+                            lookX = Math.cos(lookTime) * 2 * globalScale;
+                            lookY = Math.sin(lookTime) * 2 * globalScale;
+                        }
+                    }
+
+                    ctx.fillStyle = (body.plugin.type === 'super_eye') ? 'red' : 'black';
+                    ctx.beginPath();
+                    ctx.arc(center.x + lookX, center.y + lookY, radius * 0.4, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    if (body.plugin.emotion === 'angry') {
+                        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+                        ctx.lineWidth = 2;
                         ctx.beginPath();
-                        ctx.arc(center.x, center.y, radius + 1, 0, 2 * Math.PI);
-                        ctx.fill();
+                        ctx.moveTo(center.x - radius, center.y - radius * 0.5);
+                        ctx.lineTo(center.x + radius, center.y - radius * 0.5);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(center.x - radius * 0.5, center.y + radius * 0.5);
+                        ctx.lineTo(center.x + radius * 0.5, center.y + radius * 0.5);
+                        ctx.stroke();
                     }
                 }
             }
             ctx.globalCompositeOperation = 'screen';
         }
+    });
+}
 
-        if (!body.plugin || (body.plugin.type !== 'eye' && body.plugin.type !== 'super_eye')) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+function drawAudioVisualizer(timestamp, ctx) {
+    if (!isAudioInitialized) {
+        ctx.fillStyle = 'white';
+        ctx.font = '20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText("Click 'Audio' button to activate microphone", renderWidth / 2, renderHeight / 2);
+        return;
+    }
+
+    analyser.getByteFrequencyData(dataArray);
+
+    // Radial Visualizer
+    const centerX = renderWidth / 2;
+    const centerY = renderHeight / 2;
+    const maxRadius = Math.min(renderWidth, renderHeight) * 0.45;
+
+    // Background Pulse (Bass)
+    const bassAvg = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+    const pulse = bassAvg / 255;
+
+    // Beat flash
+    if (pulse > 0.8) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${(pulse - 0.8) * 0.2})`;
+        ctx.fillRect(0, 0, renderWidth, renderHeight);
+    }
+
+    ctx.fillStyle = `rgba(20, 0, 50, ${pulse * 0.2})`;
+    ctx.fillRect(0, 0, renderWidth, renderHeight);
+
+    // 1. Outer Ring (Mids/Highs)
+    const barCount = 120;
+    const angleStep = (Math.PI * 2) / barCount;
+    const radiusStart = 60 * globalScale + (pulse * 20);
+
+    const hueBase = (timestamp * 0.05) % 360;
+
+    ctx.lineWidth = 4 * globalScale;
+    ctx.lineCap = 'round';
+
+    for (let i = 0; i < barCount; i++) {
+        // Map bar index to frequency index
+        const dataIndex = Math.floor((i / barCount) * (dataArray.length * 0.8));
+        const value = dataArray[dataIndex];
+        const barHeight = (value / 255) * (maxRadius - radiusStart) * globalScale;
+
+        const angle = i * angleStep + (timestamp * 0.0005);
+
+        ctx.strokeStyle = `hsl(${(hueBase + i) % 360}, 80%, 60%)`;
+
+        const x1 = centerX + Math.cos(angle) * radiusStart;
+        const y1 = centerY + Math.sin(angle) * radiusStart;
+        const x2 = centerX + Math.cos(angle) * (radiusStart + barHeight);
+        const y2 = centerY + Math.sin(angle) * (radiusStart + barHeight);
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+    }
+
+    // 2. Inner Circle (Bass)
+    const centerRadius = (pulse * 50 * globalScale) + 10;
+    ctx.fillStyle = `hsl(${hueBase}, 70%, 80%)`;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, centerRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 3. Shockwave rings
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.5 - pulse * 0.5})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, centerRadius + 20 + pulse * 50, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Particles (Treble)
+    const treble = dataArray.slice(150, 250).reduce((a, b) => a + b, 0) / 100;
+    if (treble > 100 && Math.random() < 0.4) {
+        spawnParticle(centerX + (Math.random() - 0.5) * 200, centerY + (Math.random() - 0.5) * 200, `hsl(${Math.random() * 360}, 100%, 80%)`);
+    }
+    updateDrawParticles(ctx);
+}
+
+function drawFractal(timestamp, ctx) {
+    const centerX = renderWidth / 2;
+    const centerY = renderHeight / 2;
+
+    // "Infinite Zoom" Fractal
+    // Concept: Draw a pattern that scales up. When it gets too big, reset opacity or fade in new one.
+    // Actually, simple recursion with rotation is best for Kaleidoscopes.
+
+    const time = timestamp * 0.0002;
+    const sides = 6; // Hexagon symmetry for kaleidoscope
+    const maxDepth = 4;
+    const baseSize = Math.min(renderWidth, renderHeight) * 0.35 * globalScale;
+
+    // Global Rotation
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(time * 0.5);
+
+    // Fractal Function
+    function drawRecursiveShape(size, depth, rotationOffset) {
+        if (depth <= 0) return;
+
+        // Draw Shape (Hexagon/Circle mix)
+        ctx.beginPath();
+        for (let i = 0; i < sides; i++) {
+            const angle = (i / sides) * Math.PI * 2;
+            const x = Math.cos(angle) * size;
+            const y = Math.sin(angle) * size;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+
+        const hue = (timestamp * 0.05 + depth * 40) % 360;
+        ctx.strokeStyle = `hsla(${hue}, 80%, 60%, 0.8)`;
+        ctx.lineWidth = 3 * globalScale;
+        ctx.stroke();
+
+        if (depth === 1) {
+            ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.1)`;
             ctx.fill();
         }
-    });
+
+        // Recursive Calls (Children)
+        // Place smaller shapes at vertices
+        const nextSize = size * 0.5; // Scale down
+
+        // Optimize: Don't draw if too small
+        if (nextSize < 5) return;
+
+        for (let i = 0; i < sides; i++) {
+            const angle = (i / sides) * Math.PI * 2 + rotationOffset;
+            const x = Math.cos(angle) * size;
+            const y = Math.sin(angle) * size;
+
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(time + depth); // Spin children
+            drawRecursiveShape(nextSize, depth - 1, rotationOffset + time);
+            ctx.restore();
+        }
+    }
+
+    drawRecursiveShape(baseSize, maxDepth, 0);
+
+    ctx.restore();
+
+    // Center glow
+    const glowSize = 20 * (1 + Math.sin(time * 10) * 0.2);
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, glowSize, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function render() {
+    const timestamp = Date.now();
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, renderWidth, renderHeight);
+
+    if (currentMode === 'physics') {
+        drawPhysicsMode(timestamp, ctx);
+    } else if (currentMode === 'audio') {
+        drawAudioVisualizer(timestamp, ctx);
+    } else if (currentMode === 'fractal') {
+        drawFractal(timestamp, ctx);
+    }
 
     ctx.globalCompositeOperation = 'source-over';
     requestAnimationFrame(render);
 }
 
 render();
+
+// --- EXPORT FOR HTML BUTTONS ---
+window.setMode = function (mode) {
+    currentMode = mode;
+
+    // Manage Engine State
+    if (mode === 'physics') {
+        // Resume physics if needed (Matter.js runs on Engine.update call which is in render loop)
+        // Actually current implementation calls Engine.update explicitly in drawPhysicsMode.
+        // So switching modes automatically pauses physics. 
+    } else if (mode === 'audio') {
+        setupAudio(); // Try initializing if not already
+    }
+
+    // Update Button Styles (Simple toggle class)
+    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('btn-' + mode).classList.add('active');
+};
+
+window.toggleAudio = function () {
+    setupAudio();
+};
+
+// Keyboard Shortcuts
+window.addEventListener('keydown', (e) => {
+    if (e.key === '1') window.setMode('physics');
+    if (e.key === '2') window.setMode('audio');
+    if (e.key === '3') window.setMode('fractal');
+});
