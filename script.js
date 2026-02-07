@@ -1178,175 +1178,86 @@ function drawAudioVisualizer(timestamp, ctx) {
     updateDrawParticles(ctx);
 }
 
-let fractalType = 0; // 0: Hex, 1: Sierpinski, 2: Tree
-const fractalTypeNames = ["Hexagon", "Sierpinski", "Tree"];
-
+// --- EVOLVING FRACTAL MODE ---
 function drawFractal(timestamp, ctx) {
     const centerX = renderWidth / 2;
     const centerY = renderHeight / 2;
 
-    // Update Button Text
-    const fracBtn = document.getElementById('btn-fractal');
-    if (fracBtn && currentMode === 'fractal') {
-        fracBtn.textContent = `Frac: ${fractalTypeNames[fractalType]}`;
-    }
+    // Evolve complexity over time
+    // Cycle every 60 seconds
+    const cycle = (timestamp % 60000) / 60000;
+    // Complexity 1 -> 8 -> 1
+    const complexityPhase = Math.sin(cycle * Math.PI);
+    const depth = 1 + Math.floor(complexityPhase * 7); // 1 to 8 levels
 
-    if (fractalType === 0) {
-        drawFractalHex(timestamp, ctx, centerX, centerY);
-    } else if (fractalType === 1) {
-        drawFractalSierpinski(timestamp, ctx, centerX, centerY);
-    } else if (fractalType === 2) {
-        drawFractalTree(timestamp, ctx, centerX, centerY);
-    }
-
-    // Center glow (common to all fractals for now)
-    const time = timestamp * 0.0002; // Re-calculate time for glow if not passed
-    const glowSize = 20 * (1 + Math.sin(time * 10) * 0.2);
-    ctx.fillStyle = 'white';
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, glowSize, 0, Math.PI * 2);
-    ctx.fill();
-}
-
-function drawFractalHex(timestamp, ctx, cx, cy) {
-    // "Infinite Zoom" Fractal (Hexagon)
+    // Rotation & Pulsing
     const time = timestamp * 0.0002;
-    const sides = 6;
-    const maxDepth = 4;
-    const baseSize = Math.min(renderWidth, renderHeight) * 0.35 * globalScale;
+    const pulse = 1 + Math.sin(time * 5) * 0.1;
+    const baseSize = Math.min(renderWidth, renderHeight) * 0.25 * globalScale * pulse;
+
+    const branches = 6 + Math.floor(complexityPhase * 6); // 6 to 12 branches
 
     ctx.save();
-    ctx.translate(cx, cy);
+    ctx.translate(centerX, centerY);
     ctx.rotate(time * 0.5);
-
-    function drawRecursiveShape(size, depth, rotationOffset) {
-        if (depth <= 0) return;
-
-        ctx.beginPath();
-        for (let i = 0; i < sides; i++) {
-            const angle = (i / sides) * Math.PI * 2;
-            const x = Math.cos(angle) * size;
-            const y = Math.sin(angle) * size;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        }
-        ctx.closePath();
-
-        const hue = (timestamp * 0.05 + depth * 40) % 360;
-        ctx.strokeStyle = `hsla(${hue}, 80%, 60%, 0.8)`;
-        ctx.lineWidth = 3 * globalScale;
-        ctx.stroke();
-
-        if (depth === 1) {
-            ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.1)`;
-            ctx.fill();
-        }
-
-        const nextSize = size * 0.5;
-        if (nextSize < 5) return;
-
-        for (let i = 0; i < sides; i++) {
-            const angle = (i / sides) * Math.PI * 2 + rotationOffset;
-            const x = Math.cos(angle) * size;
-            const y = Math.sin(angle) * size;
-
-            ctx.save();
-            ctx.translate(x, y);
-            ctx.rotate(time + depth);
-            drawRecursiveShape(nextSize, depth - 1, rotationOffset + time);
-            ctx.restore();
-        }
-    }
-    drawRecursiveShape(baseSize, maxDepth, 0);
-    ctx.restore();
-}
-
-function drawFractalSierpinski(timestamp, ctx, cx, cy) {
-    const time = timestamp * 0.0001;
-    const size = Math.min(renderWidth, renderHeight) * 0.45 * globalScale;
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(time); // Slow rotation
-
-    function drawTri(x, y, r, depth) {
-        if (depth === 0) {
-            const hue = (timestamp * 0.1 + x * 0.1) % 360;
-            ctx.strokeStyle = `hsl(${hue}, 70%, 50%)`;
-            ctx.fillStyle = `hsla(${hue}, 70%, 50%, 0.3)`;
-            ctx.lineWidth = 1;
-
-            ctx.beginPath();
-            for (let i = 0; i < 3; i++) {
-                const angle = (i * 2 * Math.PI / 3) - Math.PI / 2;
-                const tx = x + Math.cos(angle) * r;
-                const ty = y + Math.sin(angle) * r;
-                if (i === 0) ctx.moveTo(tx, ty);
-                else ctx.lineTo(tx, ty);
-            }
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-            return;
-        }
-
-        const r2 = r / 2;
-        // Top
-        drawTri(x, y - r2, r2, depth - 1);
-        // Bottom Left
-        drawTri(x - r2 * 0.866, y + r2 * 0.5, r2, depth - 1);
-        // Bottom Right
-        drawTri(x + r2 * 0.866, y + r2 * 0.5, r2, depth - 1);
-    }
-
-    // Breathing depth/scale
-    const depth = 4 + Math.floor(Math.sin(time * 5) * 1.5 + 1.5);
-    drawTri(0, 0, size, 5);
-
-    ctx.restore();
-}
-
-function drawFractalTree(timestamp, ctx, cx, cy) {
-    const time = timestamp * 0.0005;
-
-    // 6-fold symmetry for kaleidoscope effect
-    const branches = 6;
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(time * 0.2);
 
     for (let i = 0; i < branches; i++) {
         ctx.save();
         ctx.rotate((Math.PI * 2 / branches) * i);
-        drawBranch(0, 0, 100 * globalScale, -Math.PI / 2, 5);
+        drawEvolvingBranch(ctx, 0, 0, baseSize, -Math.PI / 2, depth, timestamp, complexityPhase);
         ctx.restore();
     }
 
-    function drawBranch(x, y, len, angle, depth) {
-        if (depth === 0) return;
+    ctx.restore();
 
-        const x2 = x + Math.cos(angle) * len;
-        const y2 = y + Math.sin(angle) * len;
+    // Center Glow
+    const glowSize = 20 * pulse;
+    ctx.fillStyle = 'white';
+    ctx.shadowBlur = 20 + complexityPhase * 30;
+    ctx.shadowColor = `hsl(${timestamp * 0.1 % 360}, 100%, 70%)`;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, glowSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+}
 
-        const hue = (timestamp * 0.1 + depth * 30) % 360;
-        ctx.strokeStyle = `hsl(${hue}, 70%, 60%)`;
-        ctx.lineWidth = depth * globalScale;
+function drawEvolvingBranch(ctx, x, y, len, angle, depth, timestamp, phase) {
+    if (depth <= 0) return;
 
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
+    const endX = x + Math.cos(angle) * len;
+    const endY = y + Math.sin(angle) * len;
 
-        // Recursive branching
-        const subLen = len * 0.7;
-        const spread = 0.5 + Math.sin(time) * 0.2; // Moving branches
+    // Color shifting based on depth and time
+    const hue = (timestamp * 0.05 + depth * 30) % 360;
+    ctx.strokeStyle = `hsla(${hue}, 80%, 60%, ${0.3 + phase * 0.7})`;
+    ctx.lineWidth = depth * globalScale * (0.5 + phase * 0.5);
+    ctx.lineCap = 'round';
 
-        drawBranch(x2, y2, subLen, angle - spread, depth - 1);
-        drawBranch(x2, y2, subLen, angle + spread, depth - 1);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+
+    // Recursive Calls
+    const subLen = len * (0.6 + Math.sin(timestamp * 0.001) * 0.1);
+    const spread = 0.5 + phase * 1.0; // Angle spread increases with phase
+
+    // 2 branches
+    drawEvolvingBranch(ctx, endX, endY, subLen, angle - spread, depth - 1, timestamp, phase);
+    drawEvolvingBranch(ctx, endX, endY, subLen, angle + spread, depth - 1, timestamp, phase);
+
+    // Extra center branch at high complexity
+    if (phase > 0.7) {
+        drawEvolvingBranch(ctx, endX, endY, subLen * 0.8, angle, depth - 1, timestamp, phase);
+    }
+}
+const spread = 0.5 + Math.sin(time) * 0.2; // Moving branches
+
+drawBranch(x2, y2, subLen, angle - spread, depth - 1);
+drawBranch(x2, y2, subLen, angle + spread, depth - 1);
     }
 
-    ctx.restore();
+ctx.restore();
 }
 
 function render() {
