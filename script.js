@@ -271,8 +271,8 @@ function createGem(x, y, isStaticInBox = false) {
 
     const body = Bodies.polygon(x, y, sides, size, bodyOptions);
 
-    if (isGlowing) {
-        Body.setDensity(body, body.density * 5); // Heavy
+    if (isGlowing || isEye) {
+        Body.setDensity(body, body.density * 5); // Heavy (Glowing OR Eye)
     }
 
     if (isStaticInBox) {
@@ -592,8 +592,8 @@ function drawPhysicsMode(timestamp, ctx) {
                         Body.applyForce(b, b.position, force);
                     }
 
-                    // AGGRESSIVE: Chase same color
-                    else if (b.plugin.personality === 'aggressive' && other.plugin.color === b.plugin.color) {
+                    // AGGRESSIVE: Chase DIFFERENT color
+                    else if (b.plugin.personality === 'aggressive' && other.plugin.color !== b.plugin.color) {
                         const force = Vector.mult(dir, 0.0005 * b.mass); // Chase
                         Body.applyForce(b, b.position, force);
                     }
@@ -641,7 +641,7 @@ function drawPhysicsMode(timestamp, ctx) {
                     if (b.plugin.fascinatedTimer > 600) {
                         b.plugin.isFascinated = false;
                         b.plugin.fascinatedTarget = null;
-                        b.plugin.cooldownTimer = 300 + Math.random() * 300; // 5-10s cooldown
+                        b.plugin.cooldownTimer = 900; // 15s cooldown
                         b.plugin.fascinatedTimer = 0;
 
                         // Action on bored: Move away or switch action
