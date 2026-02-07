@@ -98,15 +98,18 @@ let globalScale = 1.0;
 // UI Listeners for Physics
 document.getElementById('gravityControl').addEventListener('input', (e) => {
     gravityScale = parseFloat(e.target.value);
+    document.getElementById('val-gravity').textContent = gravityScale;
 });
 document.getElementById('frictionControl').addEventListener('input', (e) => {
     airFriction = parseFloat(e.target.value);
+    document.getElementById('val-friction').textContent = airFriction;
     Composite.allBodies(engine.world).forEach(body => {
         if (!body.isStatic) body.frictionAir = airFriction;
     });
 });
 document.getElementById('restitutionControl').addEventListener('input', (e) => {
     wallRestitution = parseFloat(e.target.value);
+    document.getElementById('val-restitution').textContent = wallRestitution;
     Composite.allBodies(engine.world).forEach(body => {
         if (body.label === 'wall') {
             body.restitution = wallRestitution;
@@ -115,6 +118,7 @@ document.getElementById('restitutionControl').addEventListener('input', (e) => {
 });
 document.getElementById('scaleControl').addEventListener('input', (e) => {
     const newScale = parseFloat(e.target.value);
+    document.getElementById('val-scale').textContent = newScale;
     const ratio = newScale / globalScale;
     globalScale = newScale;
 

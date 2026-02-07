@@ -15,33 +15,41 @@
         <div id="debug-info" style="display:none;">Waiting for sensor...</div>
     </div>
     <div id="controls">
-        <div class="control-group">
-            <label>Mode</label>
-            <div class="button-row">
+        <div class="control-header">
+            <div class="logo">KALEID</div>
+            <div class="mode-switch">
                 <button id="btn-physics" class="mode-btn active" onclick="setMode('physics')">Phys</button>
                 <button id="btn-audio" class="mode-btn" onclick="setMode('audio')">Audio</button>
                 <button id="btn-fractal" class="mode-btn" onclick="setMode('fractal')">Frac</button>
             </div>
-            <button id="startAudio" onclick="toggleAudio()" style="margin-top:5px; font-size:0.8rem;">Start Mic</button>
+            <button id="startAudio" class="icon-btn" onclick="toggleAudio()" title="Toggle Mic">🎤</button>
+            <button id="toggleSettings" class="icon-btn" onclick="document.body.classList.toggle('settings-open')"
+                title="Settings">⚙️</button>
         </div>
 
-        <div class="control-group">
-            <label>
-                Auto-Rotate
-                <input type="checkbox" id="autoRotateControl" checked>
-            </label>
-            <label>
-                Gravity: <input type="range" id="gravityControl" min="0" max="2" step="0.1" value="1">
-            </label>
-            <label>
-                Size: <input type="range" id="scaleControl" min="0.5" max="2.0" step="0.1" value="1.0">
-            </label>
-            <label>
-                Air Resistance: <input type="range" id="frictionControl" min="0" max="0.5" step="0.01" value="0.05">
-            </label>
-            <label>
-                Wall Bounciness: <input type="range" id="restitutionControl" min="0" max="1.2" step="0.1" value="0.6">
-            </label>
+        <div class="settings-panel">
+            <div class="control-row">
+                <label class="checkbox-label">
+                    <span>Auto-Rotate</span>
+                    <input type="checkbox" id="autoRotateControl" checked>
+                </label>
+            </div>
+            <div class="slider-group">
+                <label>Gravity <span id="val-gravity">1.0</span></label>
+                <input type="range" id="gravityControl" min="0" max="2" step="0.1" value="1">
+            </div>
+            <div class="slider-group">
+                <label>Size <span id="val-scale">1.0</span></label>
+                <input type="range" id="scaleControl" min="0.5" max="2.0" step="0.1" value="1.0">
+            </div>
+            <div class="slider-group">
+                <label>Air Res <span id="val-friction">0.05</span></label>
+                <input type="range" id="frictionControl" min="0" max="0.5" step="0.01" value="0.05">
+            </div>
+            <div class="slider-group">
+                <label>Bounce <span id="val-restitution">0.6</span></label>
+                <input type="range" id="restitutionControl" min="0" max="1.2" step="0.1" value="0.6">
+            </div>
         </div>
     </div>
     <canvas id="kaleidoscope-canvas"></canvas>
