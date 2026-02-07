@@ -1297,9 +1297,10 @@ window.setMode = function (mode) {
     document.getElementById('btn-' + mode).classList.add('active');
 
     // Update button text immediately
+    // Update button text immediately
     if (currentMode === 'fractal') {
         const fracBtn = document.getElementById('btn-fractal');
-        if (fracBtn) fracBtn.textContent = `Frac: ${fractalTypeNames[fractalType]}`;
+        if (fracBtn) fracBtn.textContent = 'Fractal';
     }
 };
 
