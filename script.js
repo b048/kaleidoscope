@@ -225,12 +225,13 @@ for (let row = 0; row < CONFIG.slotRows; row++) {
 }
 
 // Generate Gemstones
+// Generate Gemstones
 function createGem(x, y, isStaticInBox = false) {
-    const baseSize = Common.random(15, 25);
+    const baseSize = 15 + Math.random() * 10; // 15-25
     const size = baseSize * (isStaticInBox ? 1.0 : globalScale);
 
-    const sides = Math.floor(Common.random(3, 8));
-    let color = Common.choose(CONFIG.gemColors);
+    const sides = Math.floor(3 + Math.random() * 5); // 3-7
+    let color = CONFIG.gemColors[Math.floor(Math.random() * CONFIG.gemColors.length)];
 
     // Strict Probabilities (User Request)
     // Both (Super Rare): 0.025% (0.00025)
@@ -249,7 +250,7 @@ function createGem(x, y, isStaticInBox = false) {
 
     // Eye colors
     if (isEyeOnly) {
-        color = Common.choose(CONFIG.gemColors);
+        color = CONFIG.gemColors[Math.floor(Math.random() * CONFIG.gemColors.length)];
     }
     // REMOVED: Super Rare Gold Override. Now uses random color + gold aura.
 
