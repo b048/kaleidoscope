@@ -47,7 +47,20 @@ function spawnParticle(x, y, color) {
         vx: (Math.random() - 0.5) * 5,
         vy: (Math.random() - 0.5) * 5,
         life: 1.0,
-        color: color
+        color: color,
+        isRising: false // Default
+    });
+}
+function spawnRisingParticle(x, y, color) {
+    if (particles.length > CONFIG.particleCount * 2) particles.shift(); // Allow more for super
+    particles.push({
+        x: x,
+        y: y,
+        vx: (Math.random() - 0.5) * 2,
+        vy: -(Math.random() * 3 + 2), // Upward
+        life: 1.0,
+        color: color,
+        isRising: true
     });
 }
 
@@ -57,7 +70,14 @@ function updateDrawParticles(ctx) {
         const p = particles[i];
         p.x += p.vx;
         p.y += p.vy;
-        p.life -= 0.03;
+
+        if (p.isRising) {
+            p.vy -= 0.1; // Accelerate up
+            p.x += (Math.random() - 0.5) * 2; // Jitter
+            p.life -= 0.05; // Fade faster
+        } else {
+            p.life -= 0.03;
+        }
 
         if (p.life <= 0) {
             particles.splice(i, 1);
@@ -231,9 +251,7 @@ function createGem(x, y, isStaticInBox = false) {
     if (isEyeOnly) {
         color = Common.choose(CONFIG.gemColors);
     }
-    if (isSuperRare) {
-        color = '#FFD700'; // Gold
-    }
+    // REMOVED: Super Rare Gold Override. Now uses random color + gold aura.
 
     const plug = {};
     plug.color = color;
@@ -796,12 +814,26 @@ function drawPhysicsMode(timestamp, ctx) {
 
         // Glow Particles
         if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye') && !b.isStatic) {
-            if (Math.random() < 0.2) {
-                spawnParticle(
-                    b.position.x + (Math.random() - 0.5) * 20,
-                    b.position.y + (Math.random() - 0.5) * 20,
-                    (b.plugin.type === 'super_eye') ? 'gold' : 'rgba(255, 255, 255, 1)'
-                );
+
+            // Super Saiyan Effect
+            if (b.plugin.type === 'super_eye') {
+                // Intense rising particles
+                for (let i = 0; i < 3; i++) { // Multiple per frame
+                    spawnRisingParticle(
+                        b.position.x + (Math.random() - 0.5) * 40 * globalScale,
+                        b.position.y + (Math.random() - 0.5) * 40 * globalScale,
+                        Math.random() < 0.5 ? '#FFD700' : '#FFFFFF' // Gold & White
+                    );
+                }
+            } else {
+                // Normal Glow
+                if (Math.random() < 0.2) {
+                    spawnParticle(
+                        b.position.x + (Math.random() - 0.5) * 20,
+                        b.position.y + (Math.random() - 0.5) * 20,
+                        'rgba(255, 255, 255, 1)'
+                    );
+                }
             }
         }
     });
@@ -846,6 +878,16 @@ function drawPhysicsMode(timestamp, ctx) {
         // Main Fill
         if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
             if (b.plugin.type === 'super_eye') {
+                // AURA
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                ctx.shadowBlur = 40;
+                ctx.shadowColor = '#FFD700'; // Gold
+                ctx.strokeStyle = `rgba(255, 215, 0, ${0.5 + Math.random() * 0.3})`;
+                ctx.lineWidth = 10;
+                ctx.stroke();
+                ctx.restore();
+
                 ctx.shadowBlur = 30;
                 ctx.shadowColor = 'gold';
             }
