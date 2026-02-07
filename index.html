@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gravity Kaleidoscope</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+</head>
+
+<body>
+    <div id="instruction-overlay">
+        <p>スマホを傾けて操作 / ドラッグで移動</p>
+        <p class="sub-text">画面をタップしてフルスクリーンに</p>
+    </div>
+    <div id="controls">
+        <label>
+            Gravity: <input type="range" id="gravityControl" min="0" max="2" step="0.1" value="1">
+        </label>
+        <label>
+            Air Resistance: <input type="range" id="frictionControl" min="0" max="0.5" step="0.01" value="0.05">
+        </label>
+        <label>
+            Wall Bounciness: <input type="range" id="restitutionControl" min="0" max="1.2" step="0.1" value="0.6">
+        </label>
+    </div>
+    <canvas id="kaleidoscope-canvas"></canvas>
+    <script src="script.js"></script>
+</body>
+
+</html>
