@@ -26,7 +26,7 @@ const CONFIG = {
     supplyBoxHeight: 180,
     slotCountCols: 6,
     slotRows: 2,
-    particleCount: 50 // Max particles
+    particleCount: 50
 };
 
 // --- Particles System ---
@@ -36,8 +36,8 @@ function spawnParticle(x, y, color) {
     particles.push({
         x: x,
         y: y,
-        vx: (Math.random() - 0.5) * 2,
-        vy: (Math.random() - 0.5) * 2,
+        vx: (Math.random() - 0.5) * 5, // Faster explosion particles
+        vy: (Math.random() - 0.5) * 5,
         life: 1.0,
         color: color
     });
@@ -49,7 +49,7 @@ function updateDrawParticles(ctx) {
         const p = particles[i];
         p.x += p.vx;
         p.y += p.vy;
-        p.life -= 0.02; // Fade out
+        p.life -= 0.03;
 
         if (p.life <= 0) {
             particles.splice(i, 1);
@@ -57,7 +57,7 @@ function updateDrawParticles(ctx) {
             ctx.fillStyle = p.color;
             ctx.globalAlpha = p.life;
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+            ctx.arc(p.x, p.y, p.life * 4, 0, Math.PI * 2);
             ctx.fill();
         }
     }
@@ -78,7 +78,6 @@ function getComplementaryColor(rgbaStr) {
 // Setup Canvas and Engine
 const canvas = document.getElementById('kaleidoscope-canvas');
 const engine = Engine.create();
-const runner = Runner.create();
 let renderWidth = window.innerWidth;
 let renderHeight = window.innerHeight;
 
@@ -86,8 +85,14 @@ let renderHeight = window.innerHeight;
 let gravityScale = 1;
 let airFriction = 0.05;
 let wallRestitution = 0.6;
+let globalScale = 1.0; // User controlled scale
 
-// Elements
+// Global state
+let isSensorActive = false;
+let isAutoRotating = true; // Default ON
+let autoRotateAngle = 0;
+
+// Elements & Listeners
 document.getElementById('gravityControl').addEventListener('input', (e) => {
     gravityScale = parseFloat(e.target.value);
 });
@@ -105,6 +110,29 @@ document.getElementById('restitutionControl').addEventListener('input', (e) => {
         }
     });
 });
+document.getElementById('scaleControl').addEventListener('input', (e) => {
+    const newScale = parseFloat(e.target.value);
+    const ratio = newScale / globalScale;
+    globalScale = newScale;
+
+    // Rescale all dynamic bodies
+    Composite.allBodies(engine.world).forEach(body => {
+        if (!body.isStatic && body.label !== 'gem_supply') {
+            Body.scale(body, ratio, ratio);
+        }
+    });
+});
+
+const autoRotateCheckbox = document.getElementById('autoRotateControl');
+if (autoRotateCheckbox) {
+    autoRotateCheckbox.addEventListener('change', (e) => {
+        isAutoRotating = e.target.checked;
+        isSensorActive = !isAutoRotating;
+        const debugInfo = document.getElementById('debug-info');
+        if (debugInfo) debugInfo.style.display = isAutoRotating ? 'none' : 'block';
+    });
+}
+
 
 // Resize
 function resize() {
@@ -146,9 +174,9 @@ Composite.add(engine.world, createWalls());
 
 // Supply Slots
 const supplySlots = [];
-// Safe margin: 150px
-const safeBottomMargin = 150;
-const slotBaseY = renderHeight - CONFIG.supplyBoxHeight - safeBottomMargin + 100;
+// Reduced margin as requested - essentially just enough for the box
+const safeBottomMargin = 0;
+const slotBaseY = renderHeight - CONFIG.supplyBoxHeight + 20; // Slight offset
 const slotWidth = renderWidth / CONFIG.slotCountCols;
 const slotRowHeight = CONFIG.supplyBoxHeight / CONFIG.slotRows;
 
@@ -160,20 +188,18 @@ for (let row = 0; row < CONFIG.slotRows; row++) {
 
 // Generate Gemstones
 function createGem(x, y, isStaticInBox = false) {
-    const size = Common.random(15, 25);
+    const baseSize = Common.random(15, 25);
+    const size = baseSize * (isStaticInBox ? 1.0 : globalScale); // Apply scale if moving
+
     const sides = Math.floor(Common.random(3, 8));
     let color = Common.choose(CONFIG.gemColors);
 
     const rand = Math.random();
 
     // Rare Super Object: Glowing + Moving
-    const isSuperRare = rand < 0.00025;
-
-    // Glowing (5%)
-    const isGlowing = isSuperRare || (rand >= 0.00025 && rand < 0.05025);
-
-    // Eye (0.5%)
-    const isEye = isSuperRare || (!isGlowing && rand > 0.05025 && rand < 0.05525);
+    const isSuperRare = rand < 0.0005; // increased slightly
+    const isGlowing = isSuperRare || (rand >= 0.0005 && rand < 0.0505);
+    const isEye = isSuperRare || (!isGlowing && rand > 0.0505 && rand < 0.0605); // increased slightly
 
     if (isEye && !isSuperRare) {
         color = Common.choose(['#9b59b6', '#2ecc71', '#e67e22', '#34495e']);
@@ -195,6 +221,11 @@ function createGem(x, y, isStaticInBox = false) {
         plug.eyeOffset = Math.random() * 1000;
         plug.blinkTimer = 0;
         plug.noiseOffset = Math.random() * 1000;
+
+        // Emotion State
+        plug.emotion = 'normal'; // normal, angry, sleep
+        plug.stuckCounter = 0;
+        plug.sleepCounter = 0;
     } else if (!isGlowing) {
         plug.type = 'normal';
     }
@@ -215,7 +246,7 @@ function createGem(x, y, isStaticInBox = false) {
     const body = Bodies.polygon(x, y, sides, size, bodyOptions);
 
     if (isGlowing) {
-        Body.setDensity(body, body.density * 5);
+        Body.setDensity(body, body.density * 5); // Heavy
     }
 
     if (isStaticInBox) {
@@ -232,7 +263,7 @@ function checkSupplyAndCleanup() {
         if (body.isStatic) return;
         const distFromCenter = Vector.magnitude(Vector.sub(body.position, boundaryCenter));
         // Expanded supply zone check
-        const isInSupplyZone = body.position.y > renderHeight - CONFIG.supplyBoxHeight - safeBottomMargin - 50;
+        const isInSupplyZone = body.position.y > renderHeight - CONFIG.supplyBoxHeight - 50;
 
         if (distFromCenter > boundaryRadius * 1.5 && !isInSupplyZone) {
             if (body.position.x < -100 || body.position.x > renderWidth + 100 ||
@@ -248,7 +279,11 @@ function checkSupplyAndCleanup() {
             const dist = Vector.magnitude(Vector.sub(body.position, { x: slot.x, y: slot.y }));
             if (dist > 40 || !body.isStatic) {
                 if (body.label === 'gem_supply') {
-                    if (!body.isStatic) body.label = 'gem';
+                    if (!body.isStatic) {
+                        body.label = 'gem';
+                        // Apply global scale when leaving box
+                        Body.scale(body, globalScale, globalScale);
+                    }
                 }
                 if (dist > 50) slot.occupiedBy = null;
             }
@@ -269,25 +304,10 @@ for (let i = 0; i < CONFIG.initialBeadCount; i++) {
 
 // Gravity & Permission
 const debugInfo = document.getElementById('debug-info');
-let isSensorActive = false;
-let isAutoRotating = false;
-let autoRotateAngle = 0;
-
-// Auto-Rotate Control
-const autoRotateCheckbox = document.getElementById('autoRotateControl');
-if (autoRotateCheckbox) {
-    autoRotateCheckbox.addEventListener('change', (e) => {
-        isAutoRotating = e.target.checked;
-        isSensorActive = !isAutoRotating;
-        if (isAutoRotating && debugInfo) debugInfo.style.display = 'none';
-        if (!isAutoRotating && debugInfo) debugInfo.style.display = 'block';
-    });
-}
 
 function handleOrientation(event) {
     if (isAutoRotating) return;
 
-    // Debug info
     if (debugInfo) {
         if (event.alpha !== null) {
             debugInfo.textContent = `a:${event.alpha.toFixed(1)} b:${event.beta.toFixed(1)} g:${event.gamma.toFixed(1)}`;
@@ -310,18 +330,16 @@ function handleOrientation(event) {
 // Permission Request (iOS 13+)
 const startButton = document.getElementById('startButton');
 startButton.addEventListener('click', async () => {
-    // Check for Secure Context (HTTPS)
+    // Check for Secure Context
     if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        alert("Warning: Sensors might require HTTPS. If this fails, try the GitHub Pages URL.");
+        alert("Warning: Sensors might require HTTPS.");
     }
 
-    // Fullscreen attempt
+    // Fullscreen
     if (!document.fullscreenElement) {
         try {
             await document.documentElement.requestFullscreen();
-        } catch (e) {
-            console.log("Fullscreen denied", e);
-        }
+        } catch (e) { console.log("Fullscreen denied", e); }
     }
 
     // iOS Permission
@@ -330,27 +348,27 @@ startButton.addEventListener('click', async () => {
             const response = await DeviceOrientationEvent.requestPermission();
             if (response === 'granted') {
                 window.addEventListener('deviceorientation', handleOrientation);
+                // Don't auto-hide overlay completely, just the button mainly? or check
+                // Actually if auto-rotate is on by default, we just proceed.
                 document.getElementById('instruction-overlay').classList.add('hidden');
             } else {
-                alert('Permission denied (iOS). Gravity will not work.');
+                alert('Permission denied (iOS).');
             }
         } catch (e) {
             console.error(e);
-            alert('Error requesting permission: ' + e);
+            alert('Error: ' + e);
         }
     } else {
-        // Non-iOS or older devices
+        // Non-iOS
         window.addEventListener('deviceorientation', handleOrientation);
         document.getElementById('instruction-overlay').classList.add('hidden');
 
-        // Check if event is actually firing
+        // Check sensor
         setTimeout(() => {
-            if (!debugInfo.textContent.includes("a:")) {
-                // Sensor failed or not present -> Enable Auto-Rotate
-                console.log("No sensor data, switching to Auto-Rotate");
-                isAutoRotating = true;
-                if (autoRotateCheckbox) autoRotateCheckbox.checked = true;
-                if (debugInfo) debugInfo.style.display = 'none';
+            if (!isSensorActive && !isAutoRotating) {
+                // If user hasn't turned on Autoplay but sensors fail...
+                console.log("No sensor data.");
+                // We default to AutoRotating anyway in this version if config matches
             }
         }, 2000);
     }
@@ -392,19 +410,14 @@ function render() {
     const timestamp = Date.now();
     checkSupplyAndCleanup();
 
-    // Auto Rotation Logic (Sensorless / Manual)
+    // Auto Rotation Logic
     if (isAutoRotating) {
-        // Variable speed
         const speedVar = Math.sin(timestamp * 0.001) * 0.005 + 0.01;
         autoRotateAngle += speedVar;
-
-        // Pulse gravity
         const pulse = 1.0 + Math.sin(timestamp * 0.002) * 0.5;
-
         engine.world.gravity.x = Math.sin(autoRotateAngle) * gravityScale * pulse;
         engine.world.gravity.y = Math.cos(autoRotateAngle) * gravityScale * pulse;
 
-        // Turbulence
         if (Math.random() < 0.05) {
             Composite.allBodies(engine.world).forEach(b => {
                 if (!b.isStatic && Math.random() < 0.3) {
@@ -421,16 +434,67 @@ function render() {
     Composite.allBodies(engine.world).forEach(b => {
         if (b.label === 'gem' || b.label === 'gem_transition') b.frictionAir = airFriction;
 
-        // Eye (or Super Eye) Movement
+        // --- Eye Logic (Emotions) ---
         if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye') && !b.isStatic && b.label !== 'gem_supply') {
-            const t = (timestamp + b.plugin.noiseOffset) * 0.002;
-            const angle = noise(t) * Math.PI * 2;
-            const forceMag = 0.0005 * (b.mass / 5);
 
-            Body.applyForce(b, b.position, {
-                x: Math.cos(angle) * forceMag,
-                y: Math.sin(angle) * forceMag
-            });
+            // 1. Stuck Check -> Angular
+            const speed = b.speed;
+            if (speed < 0.5) {
+                b.plugin.stuckCounter++;
+            } else {
+                b.plugin.stuckCounter = Math.max(0, b.plugin.stuckCounter - 1);
+            }
+
+            // Trigger Angry
+            if (b.plugin.stuckCounter > 120) { // ~2 seconds stuck
+                b.plugin.emotion = 'angry';
+            } else if (b.plugin.stuckCounter === 0 && b.plugin.emotion === 'angry') {
+                b.plugin.emotion = 'normal'; // Cooldown
+            }
+
+            // 2. Sleep Logic
+            if (b.plugin.emotion === 'normal' && Math.random() < 0.001) {
+                b.plugin.emotion = 'sleep';
+                b.plugin.sleepCounter = 300; // Sleep for 5s
+            }
+            if (b.plugin.emotion === 'sleep') {
+                b.plugin.sleepCounter--;
+                if (b.plugin.sleepCounter <= 0) b.plugin.emotion = 'normal';
+            }
+
+            // Action based on emotion
+            if (b.plugin.emotion === 'angry') {
+                // Explode / Push neighbors
+                if (Math.random() < 0.1) {
+                    spawnParticle(b.position.x, b.position.y, 'red'); // Anger fumes
+
+                    // Repel neighbors
+                    Composite.allBodies(engine.world).forEach(other => {
+                        if (other !== b && !other.isStatic) {
+                            const d = Vector.sub(other.position, b.position);
+                            const dist = Vector.magnitude(d);
+                            if (dist < 200) {
+                                let force = Vector.normalise(d);
+                                force = Vector.mult(force, 0.05);
+                                Body.applyForce(other, other.position, force);
+                            }
+                        }
+                    });
+                    // Jump self
+                    Body.applyForce(b, b.position, { x: (Math.random() - 0.5) * 0.1, y: -0.1 });
+                }
+            } else if (b.plugin.emotion === 'sleep') {
+                // Do nothing, maybe heavy?
+            } else {
+                // Normal swim
+                const t = (timestamp + b.plugin.noiseOffset) * 0.002;
+                const angle = noise(t) * Math.PI * 2;
+                const forceMag = 0.0005 * (b.mass / 5);
+                Body.applyForce(b, b.position, {
+                    x: Math.cos(angle) * forceMag,
+                    y: Math.sin(angle) * forceMag
+                });
+            }
         }
 
         // Glow Particles
@@ -450,10 +514,11 @@ function render() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, renderWidth, renderHeight);
 
-    // Supply Box Area BG
+    // Supply Box BG (Minimal)
     const boxY = renderHeight - CONFIG.supplyBoxHeight - safeBottomMargin;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-    ctx.fillRect(0, boxY, renderWidth, CONFIG.supplyBoxHeight + safeBottomMargin);
+    // ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'; 
+    // ctx.fillRect(0, boxY, renderWidth, CONFIG.supplyBoxHeight + safeBottomMargin); // Remove rect if user wants "margin eliminate" visual?
+    // Let's keep it faint but respect the user saying "remove margin" likely meant the visual gap.
 
     // Boundary Link
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
@@ -479,14 +544,23 @@ function render() {
         ctx.lineTo(vertices[0].x, vertices[0].y);
         ctx.closePath();
 
-        // Main Fill & Glow
+        // Color Logic with Emotion
+        let fill = body.render.fillStyle;
+        if (body.plugin && body.plugin.emotion === 'angry') {
+            fill = '#e74c3c'; // Angry Red
+            ctx.shadowColor = 'red';
+            ctx.shadowBlur = 20;
+        }
+
+        // Main Fill
+        // Super Eye = Gold
         if (body.plugin && (body.plugin.type === 'eye' || body.plugin.type === 'super_eye')) {
             if (body.plugin.type === 'super_eye') {
                 ctx.shadowBlur = 30;
                 ctx.shadowColor = 'gold';
             }
             ctx.globalCompositeOperation = 'source-over';
-            ctx.fillStyle = body.render.fillStyle;
+            ctx.fillStyle = fill;
             ctx.fill();
             ctx.stroke();
             ctx.globalCompositeOperation = 'screen';
@@ -494,10 +568,10 @@ function render() {
             if (body.plugin && body.plugin.type === 'glowing') {
                 ctx.shadowBlur = 15;
                 ctx.shadowColor = 'white';
-                ctx.fillStyle = body.render.fillStyle;
+                ctx.fillStyle = fill;
             } else {
                 ctx.shadowBlur = 0;
-                ctx.fillStyle = body.render.fillStyle;
+                ctx.fillStyle = fill;
             }
 
             ctx.strokeStyle = body.render.strokeStyle || 'rgba(255,255,255,0.5)';
@@ -509,7 +583,8 @@ function render() {
 
         // Inner Details (Complementary)
         if (body.plugin && (body.plugin.type === 'glowing' || body.plugin.type === 'super_eye')) {
-            if (body.plugin.type !== 'super_eye') {
+            // Skip if Angry?
+            if (body.plugin.type !== 'super_eye' && body.plugin.emotion !== 'angry') {
                 ctx.fillStyle = body.plugin.complementary;
                 ctx.globalCompositeOperation = 'source-over';
                 const center = body.position;
@@ -528,29 +603,64 @@ function render() {
         // Eye Details
         if (body.plugin && (body.plugin.type === 'eye' || body.plugin.type === 'super_eye')) {
             ctx.globalCompositeOperation = 'source-over';
-            const radius = 8;
+            const radius = 8 * globalScale; // Scale eye too
             const center = body.position;
 
-            ctx.fillStyle = 'white';
-            ctx.beginPath();
-            ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
-            ctx.fill();
-
-            const lookTime = (timestamp + body.plugin.eyeOffset) / 500;
-            const lookX = Math.cos(lookTime) * 3;
-            const lookY = Math.sin(lookTime) * 3;
-
-            ctx.fillStyle = (body.plugin.type === 'super_eye') ? 'red' : 'black';
-            ctx.beginPath();
-            ctx.arc(center.x + lookX, center.y + lookY, radius * 0.4, 0, 2 * Math.PI);
-            ctx.fill();
-
-            const blinkCycle = (timestamp + body.plugin.noiseOffset) % 3000;
-            if (blinkCycle < 150) {
-                ctx.fillStyle = body.render.fillStyle;
+            // Emotion: Sleep -> Closed Eye (Line)
+            if (body.plugin.emotion === 'sleep') {
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 3;
                 ctx.beginPath();
-                ctx.arc(center.x, center.y, radius + 1, 0, 2 * Math.PI);
+                ctx.moveTo(center.x - radius, center.y);
+                ctx.lineTo(center.x + radius, center.y);
+                ctx.stroke();
+                // Zzz particles?
+                if (Math.random() < 0.05) spawnParticle(center.x, center.y - 20, 'white');
+            } else {
+                // Angry or Normal -> Open Eye
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
                 ctx.fill();
+
+                // Pupil
+                let lookX = 0, lookY = 0;
+                if (body.plugin.emotion === 'angry') {
+                    // Shake pupil
+                    lookX = (Math.random() - 0.5) * 4;
+                    lookY = (Math.random() - 0.5) * 4;
+                } else {
+                    const lookTime = (timestamp + body.plugin.eyeOffset) / 500;
+                    lookX = Math.cos(lookTime) * 3 * globalScale;
+                    lookY = Math.sin(lookTime) * 3 * globalScale;
+                }
+
+                ctx.fillStyle = (body.plugin.type === 'super_eye') ? 'red' : 'black';
+                ctx.beginPath();
+                ctx.arc(center.x + lookX, center.y + lookY, radius * 0.4, 0, 2 * Math.PI);
+                ctx.fill();
+
+                // Angry Eyebrows
+                if (body.plugin.emotion === 'angry') {
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(center.x - radius, center.y - radius);
+                    ctx.lineTo(center.x, center.y - radius + 3);
+                    ctx.lineTo(center.x + radius, center.y - radius);
+                    ctx.stroke();
+                }
+
+                // Blink
+                if (body.plugin.emotion !== 'angry') {
+                    const blinkCycle = (timestamp + body.plugin.noiseOffset) % 3000;
+                    if (blinkCycle < 150) {
+                        ctx.fillStyle = (body.plugin.emotion === 'angry') ? '#e74c3c' : body.render.fillStyle;
+                        ctx.beginPath();
+                        ctx.arc(center.x, center.y, radius + 1, 0, 2 * Math.PI);
+                        ctx.fill();
+                    }
+                }
             }
             ctx.globalCompositeOperation = 'screen';
         }
