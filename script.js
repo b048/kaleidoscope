@@ -799,24 +799,30 @@ function drawPhysicsMode(timestamp, ctx) {
                 // --- Organic Swim Logic ---
                 let targetAngle = 0;
 
+                // Fascination Override
                 if (b.plugin.isFascinated && b.plugin.fascinatedTarget) {
-                    // Turn towards glowing object
                     const d = Vector.sub(b.plugin.fascinatedTarget.position, b.position);
-                    targetAngle = Math.atan2(d.y, d.x);
-                } else {
-                    const t = (timestamp + b.plugin.noiseOffset) * 0.001;
-                    const noiseAngle = noise(t) * Math.PI * 4;
-                    targetAngle = noiseAngle;
+                    const angleToTarget = Math.atan2(d.y, d.x);
+                    targetAngle = angleToTarget;
 
-                    const speed = Vector.magnitude(b.velocity);
-                    if (speed > 0.1) {
-                        targetAngle = Math.atan2(b.velocity.y, b.velocity.x);
+                    // Stop if close
+                    if (Vector.magnitude(d) > 80 * globalScale) {
+                        const swimForce = 0.0005 * b.mass;
+                        Body.applyForce(b, b.position, {
+                            x: Math.cos(targetAngle) * swimForce,
+                            y: Math.sin(targetAngle) * swimForce
+                        });
                     }
+                } else {
+                    // Normal Swim
+                    const noiseVal = noise(timestamp * 0.001 + b.plugin.noiseOffset);
+                    targetAngle = noiseVal * Math.PI * 2;
                 }
 
-                let diff = targetAngle - b.angle;
-                while (diff < -Math.PI) diff += Math.PI * 2;
-                while (diff > Math.PI) diff -= Math.PI * 2;
+                const diff = targetAngle - b.angle;
+                // Normalize angle diff
+                // while (diff < -Math.PI) diff += Math.PI * 2;
+                // while (diff > Math.PI) diff -= Math.PI * 2;
 
                 b.torque = diff * 0.0005 * b.mass * (b.plugin.type === 'super_eye' ? 5 : 1);
 
@@ -827,325 +833,158 @@ function drawPhysicsMode(timestamp, ctx) {
                     // Personality Speed Multipliers
                     if (b.plugin.personality === 'lazy') kickStrength *= 0.5;
                     if (b.plugin.personality === 'hyper') kickStrength *= 1.5;
-                    if (b.plugin.personality === 'aggressive') kickStrength *= 1.2;
 
-                    const moodMult = (b.plugin.emotion === 'tired' || b.plugin.emotion === 'scared') ? 0.3 : 1.0;
-
-                    // Hyper jitters direction
-                    if (b.plugin.personality === 'hyper' && Math.random() < 0.1) {
-                        b.angle += (Math.random() - 0.5);
-                    }
-
-                    const force = {
-                        x: Math.cos(b.angle) * kickStrength * moodMult,
-                        y: Math.sin(b.angle) * kickStrength * moodMult
-                    };
-                    Body.applyForce(b, b.position, force);
-                    b.torque += Math.sin(timestamp * 0.02) * 0.0001 * b.mass;
+                    Body.applyForce(b, b.position, {
+                        x: Math.cos(b.angle) * kickStrength,
+                        y: Math.sin(b.angle) * kickStrength
+                    });
                 }
             }
-        }
 
-        // Glow Particles
-        if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye') && !b.isStatic) {
-
-            // Super Saiyan Effect
-            if (b.plugin.type === 'super_eye') {
-                // Intense rising particles
-                // Intense rising particles
-                for (let i = 0; i < 3; i++) { // Multiple per frame
-                    const hue = (timestamp * 0.5 + i * 30 + Math.random() * 60) % 360;
-                    spawnRisingParticle(
-                        b.position.x + (Math.random() - 0.5) * 80 * globalScale, // 2x Range
-                        b.position.y + (Math.random() - 0.5) * 80 * globalScale,
-                        `hsl(${hue}, 100%, 70%)` // Rainbow
-                    );
-                }
-            } else {
-                // Normal Glow
-                if (Math.random() < 0.2) {
-                    spawnParticle(
-                        b.position.x + (Math.random() - 0.5) * 20,
-                        b.position.y + (Math.random() - 0.5) * 20,
-                        'rgba(255, 255, 255, 1)'
-                    );
-                }
-            }
+            // Drawing Eye
+            // We use Matter.Render normally, but we can overlay extra details if needed.
+            // Actually, for simplicity, we rely on standard renderer + color changes.
         }
     });
 
+    // Render Logic
     Engine.update(engine, 1000 / 60);
 
-    // Draw Boundary
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(boundaryCenter.x, boundaryCenter.y, boundaryRadius, 0, 2 * Math.PI);
-    ctx.stroke();
+    const renderOptions = {
+        width: renderWidth,
+        height: renderHeight,
+        background: 'transparent',
+        wireframes: false,
+        showAngleIndicator: false
+    };
 
-    // Draw Supply Slots (Visual only)
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.lineWidth = 1;
-    supplySlots.forEach(slot => {
-        // Simple box representation
-        const halfW = (renderWidth / CONFIG.slotCountCols) / 2 - 5;
-        const halfH = (CONFIG.supplyBoxHeight / CONFIG.slotRows) / 2 - 5;
-        ctx.strokeRect(slot.x - halfW, slot.y - halfH, halfW * 2, halfH * 2);
-    });
+    Render.bodies(engine, bodies, ctx);
 
-    updateDrawParticles(ctx);
-    ctx.globalCompositeOperation = 'screen';
-
+    // Overlay Effects
     bodies.forEach(b => {
-        if (b.label === 'wall') return;
+        if (!b.render.visible) return;
 
-        ctx.beginPath();
-        const vertices = b.vertices;
-        ctx.moveTo(vertices[0].x, vertices[0].y);
-        for (let j = 1; j < vertices.length; j += 1) {
-            ctx.lineTo(vertices[j].x, vertices[j].y);
-        }
-        ctx.lineTo(vertices[0].x, vertices[0].y);
-        ctx.closePath();
-
-        // Color Logic with Emotion
-        let fill = b.render.fillStyle;
-
-        // Main Fill
-        if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
-            if (b.plugin.type === 'super_eye') {
-                // AURA
-                const hue = (timestamp * 0.2) % 360; // Slow rainbow cycle
-                ctx.save();
-                ctx.globalCompositeOperation = 'screen';
-                ctx.shadowBlur = 40;
-                ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
-                ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${0.5 + Math.random() * 0.3})`;
-                ctx.lineWidth = 10;
-                ctx.stroke();
-                ctx.restore();
-
-                ctx.shadowBlur = 30;
-                ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
-
-                // RAINBOW BODY Override
-                ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
-                ctx.shadowColor = '#FFD700'; // Gold
-                ctx.strokeStyle = `rgba(255, 215, 0, ${0.5 + Math.random() * 0.3})`;
-                ctx.lineWidth = 10;
-                ctx.stroke();
-                ctx.restore();
-
-                ctx.shadowBlur = 30;
-                ctx.shadowColor = 'gold';
-            }
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.fillStyle = fill;
-            ctx.fill();
-            ctx.stroke();
-            ctx.globalCompositeOperation = 'screen';
-        } else {
-            if (b.plugin && b.plugin.type === 'glowing') {
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = 'white';
-                ctx.fillStyle = fill;
-            } else {
-                ctx.shadowBlur = 0;
-                ctx.fillStyle = fill;
-            }
-
-            ctx.strokeStyle = b.render.strokeStyle || 'rgba(255,255,255,0.5)';
-            ctx.lineWidth = 2;
-            ctx.fill();
-            ctx.stroke();
-            ctx.shadowBlur = 0;
-        }
-
-        // Inner Details (Complementary)
+        // Glowing Aura
         if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye')) {
-            if (b.plugin.type !== 'super_eye' && b.plugin.emotion !== 'angry') {
-                ctx.fillStyle = b.plugin.complementary;
-                ctx.globalCompositeOperation = 'source-over';
-                const center = b.position;
-                const scale = 0.5;
-                ctx.beginPath();
-                ctx.moveTo(center.x + (vertices[0].x - center.x) * scale, center.y + (vertices[0].y - center.y) * scale);
-                for (let j = 1; j < vertices.length; j++) {
-                    ctx.lineTo(center.x + (vertices[j].x - center.x) * scale, center.y + (vertices[j].y - center.y) * scale);
-                }
-                ctx.closePath();
-                ctx.fill();
-                ctx.globalCompositeOperation = 'screen';
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = b.render.fillStyle;
+            ctx.beginPath();
+            // Approximating polygon for glow
+            ctx.arc(b.position.x, b.position.y, 20 * globalScale, 0, Math.PI * 2);
+            ctx.fillStyle = b.render.fillStyle;
+            ctx.globalAlpha = 0.5;
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            ctx.shadowBlur = 0;
+
+            // Simple Sparkles
+            if (Math.random() < 0.1) {
+                spawnParticle(b.position.x + (Math.random() - 0.5) * 20, b.position.y + (Math.random() - 0.5) * 20, 'white');
+            }
+
+            // Super Eye: Rainbow Particles
+            if (b.plugin.type === 'super_eye' && Math.random() < 0.3) {
+                spawnRisingParticle(b.position.x, b.position.y, `hsl(${timestamp * 0.1 % 360}, 100%, 80%)`);
             }
         }
 
         // Eye Details
-        if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye') && !b.isStatic && b.label !== 'gem_supply') {
-            ctx.globalCompositeOperation = 'source-over';
+        if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
+            ctx.save();
+            ctx.translate(b.position.x, b.position.y);
+            ctx.rotate(b.angle);
 
-            // Dynamic Size Calculation
-            const bounds = b.bounds;
-            const w = bounds.max.x - bounds.min.x;
-            const h = bounds.max.y - bounds.min.y;
-            const radius = Math.min(w, h) * 0.25; // 25% of body size (scales with growth)
+            // Eye White
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(10 * globalScale, 0, 8 * globalScale, 0, Math.PI * 2);
+            ctx.arc(-10 * globalScale, 0, 8 * globalScale, 0, Math.PI * 2);
+            ctx.fill();
 
-            const center = b.position;
+            // Pupil
+            ctx.fillStyle = 'black';
 
+            let pupilX = 0;
+            let pupilScale = 1.0;
+
+            // Blink Logic
             if (b.plugin.emotion === 'sleep') {
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 3 * globalScale;
-                ctx.beginPath();
-                ctx.moveTo(center.x - radius, center.y);
-                ctx.lineTo(center.x + radius, center.y);
-                ctx.stroke();
-            } else if (b.plugin.emotion === 'scared') {
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 3 * globalScale;
-                ctx.beginPath();
-                ctx.moveTo(center.x - radius, center.y);
-                ctx.lineTo(center.x + radius, center.y);
-                ctx.stroke();
-            } else if (b.plugin.emotion === 'tired') {
-                ctx.fillStyle = 'white';
-                ctx.beginPath();
-                ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
-                ctx.fill();
-                ctx.fillStyle = 'rgba(0,0,0,0.3)';
-                ctx.beginPath();
-                ctx.arc(center.x, center.y, radius, Math.PI, 0);
-                ctx.fill();
-                ctx.fillStyle = 'black';
-                ctx.beginPath();
-                ctx.arc(center.x, center.y + radius * 0.3, radius * 0.4, 0, 2 * Math.PI);
-                ctx.fill();
+                pupilScale = 0.1; // Closed
             } else {
-                let isBlinking = false;
-                if (b.plugin.emotion === 'normal' && !b.plugin.isFascinated) {
-                    const blinkCycle = (timestamp + b.plugin.noiseOffset) % 3000;
-                    if (blinkCycle < 150) isBlinking = true;
+                b.plugin.blinkTimer--;
+                if (b.plugin.blinkTimer <= 0) {
+                    b.plugin.blinkTimer = Math.random() * 200 + 100;
                 }
-
-                if (isBlinking) {
-                    ctx.strokeStyle = 'black';
-                    ctx.lineWidth = 3 * globalScale;
-                    ctx.beginPath();
-                    ctx.moveTo(center.x - radius, center.y);
-                    ctx.lineTo(center.x + radius, center.y);
-                    ctx.stroke();
-                } else {
-                    // Open Eye
-                    ctx.fillStyle = 'white';
-                    ctx.beginPath();
-                    ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
-                    ctx.fill();
-
-                    // Look Target Calculation
-                    let targetLookX = 0, targetLookY = 0;
-
-                    if (b.plugin.isFascinated && b.plugin.fascinatedTarget) {
-                        const d = Vector.sub(b.plugin.fascinatedTarget.position, b.position);
-                        const dist = Vector.magnitude(d);
-                        const lookMag = Math.min(dist, 100) / 100; // Normalize gaze intensity by distance
-                        const vNorm = Vector.normalise(d);
-                        targetLookX = vNorm.x * (radius * 0.6) * lookMag;
-                        targetLookY = vNorm.y * (radius * 0.6) * lookMag;
-                    } else if (b.plugin.emotion === 'angry') {
-                        targetLookX = (Math.random() - 0.5) * radius * 0.5;
-                        targetLookY = (Math.random() - 0.5) * radius * 0.5;
-                    } else {
-                        const vel = b.velocity;
-                        const speed = Vector.magnitude(vel);
-                        if (speed > 0.5) {
-                            const vNorm = Vector.normalise(vel);
-                            targetLookX = vNorm.x * (radius * 0.5);
-                            targetLookY = vNorm.y * (radius * 0.5);
-                        } else {
-                            const lookTime = (timestamp + b.plugin.eyeOffset) / 2000; // Slower idleness
-                            targetLookX = Math.cos(lookTime) * (radius * 0.3);
-                            targetLookY = Math.sin(lookTime) * (radius * 0.3);
-                        }
-                    }
-
-                    // Smooth Pupil Movement (Lerp)
-                    const lerpFactor = 0.15; // Smoothness
-                    b.plugin.lookX = (b.plugin.lookX || 0) * (1 - lerpFactor) + targetLookX * lerpFactor;
-                    b.plugin.lookY = (b.plugin.lookY || 0) * (1 - lerpFactor) + targetLookY * lerpFactor;
-
-                    ctx.fillStyle = (b.plugin.type === 'super_eye') ? '#FF3333' : 'black'; // Red if super eye
-                    ctx.beginPath();
-                    ctx.arc(center.x + b.plugin.lookX, center.y + b.plugin.lookY, radius * 0.4, 0, 2 * Math.PI);
-                    ctx.fill();
-
-                    // Sparkle if fascinating
-                    if (b.plugin.isFascinated) {
-                        ctx.fillStyle = 'white';
-                        const sparkleX = center.x + b.plugin.lookX - radius * 0.3;
-                        const sparkleY = center.y + b.plugin.lookY - radius * 0.3;
-
-                        const sparkleSize = radius * 0.5;
-                        ctx.beginPath();
-                        ctx.moveTo(sparkleX, sparkleY - sparkleSize);
-                        ctx.lineTo(sparkleX + sparkleSize * 0.3, sparkleY);
-                        ctx.lineTo(sparkleX, sparkleY + sparkleSize);
-                        ctx.lineTo(sparkleX - sparkleSize * 0.3, sparkleY);
-                        ctx.fill();
-
-                        ctx.beginPath();
-                        ctx.moveTo(sparkleX - sparkleSize, sparkleY);
-                        ctx.lineTo(sparkleX, sparkleY - sparkleSize * 0.3);
-                        ctx.lineTo(sparkleX + sparkleSize, sparkleY);
-                        ctx.lineTo(sparkleX, sparkleY + sparkleSize * 0.3);
-                        ctx.fill();
-                    }
-
-                    if (b.plugin.emotion === 'angry') {
-                        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-                        ctx.lineWidth = radius * 0.2;
-                        // ... angry eyebrows ...
-                        ctx.beginPath();
-                        ctx.moveTo(center.x - radius, center.y - radius * 0.5);
-                        ctx.lineTo(center.x + radius, center.y - radius * 0.5);
-                        ctx.stroke();
-                    }
+                if (b.plugin.blinkTimer < 10) {
+                    pupilScale = 0.1; // Blink
                 }
             }
-            ctx.globalCompositeOperation = 'screen';
+
+            if (b.plugin.emotion === 'angry') {
+                ctx.fillStyle = 'red';
+                pupilScale *= 0.8;
+            }
+            if (b.plugin.emotion === 'scared') {
+                pupilScale *= 0.5;
+                pupilX = (Math.random() - 0.5) * 5; // Shaking pupils
+            }
+            if (b.plugin.isFascinated) {
+                pupilScale *= 1.3; // Dilated
+                // ctx.fillStyle = '#FFD700'; // Gold pupils
+            }
+
+            ctx.beginPath();
+            ctx.arc(10 * globalScale + pupilX, 0, 4 * globalScale * pupilScale, 0, Math.PI * 2);
+            ctx.arc(-10 * globalScale + pupilX, 0, 4 * globalScale * pupilScale, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Zzz for sleep
+            if (b.plugin.emotion === 'sleep') {
+                ctx.fillStyle = 'white';
+                ctx.font = '16px monospace';
+                ctx.fillText('Zzz', 0, -20);
+            }
+            // ! for Fascination
+            if (b.plugin.isFascinated) {
+                ctx.fillStyle = 'yellow';
+                ctx.font = 'bold 20px monospace';
+                ctx.fillText('!', 0, -25);
+            }
+            // ? for Curious
+            if (b.plugin.personality === 'curious' && Math.random() < 0.01) {
+                ctx.fillStyle = 'cyan';
+                ctx.font = 'bold 16px monospace';
+                ctx.fillText('?', 0, -25);
+            }
+
+            ctx.restore();
         }
     });
+    updateDrawParticles(ctx);
 }
 
 function drawAudioVisualizer(timestamp, ctx) {
     if (!isAudioInitialized) {
         ctx.fillStyle = 'white';
-        ctx.font = '20px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText("Click 'Audio' button to activate microphone", renderWidth / 2, renderHeight / 2);
+        ctx.font = '20px monospace';
+        ctx.fillText("Click 'Audio' to Initialize Microphone", renderWidth / 2, renderHeight / 2);
         return;
     }
 
     analyser.getByteFrequencyData(dataArray);
 
-    // Radial Visualizer
     const centerX = renderWidth / 2;
     const centerY = renderHeight / 2;
-    const maxRadius = Math.min(renderWidth, renderHeight) * 0.45;
-
-    // Background Pulse (Bass)
-    const bassAvg = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
-    const pulse = bassAvg / 255;
-
-    // Beat flash
-    if (pulse > 0.8) {
-        ctx.fillStyle = `rgba(255, 255, 255, ${(pulse - 0.8) * 0.2})`;
-        ctx.fillRect(0, 0, renderWidth, renderHeight);
-    }
-
-    ctx.fillStyle = `rgba(20, 0, 50, ${pulse * 0.2})`;
-    ctx.fillRect(0, 0, renderWidth, renderHeight);
-
-    // 1. Outer Ring (Mids/Highs)
-    const barCount = 120;
+    const maxRadius = Math.min(renderWidth, renderHeight) * 0.4;
+    const barCount = 100;
     const angleStep = (Math.PI * 2) / barCount;
+
+    // 1. Bass Pulse in Center
+    const bass = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+    const pulse = bass / 255; // 0.0 - 1.0
+
+    // Draw Bars
     const radiusStart = 60 * globalScale + (pulse * 20);
 
     const hueBase = (timestamp * 0.05) % 360;
@@ -1196,14 +1035,26 @@ function drawAudioVisualizer(timestamp, ctx) {
     updateDrawParticles(ctx);
 }
 
-// --- MANDELBROT ZOOM MODE ---
+// --- MANDELBROT / JULIA ZOOM MODE ---
 let mandelbrotState = {
-    // Interesting point (Seahorse Valley)
-    cx: -0.7436438870371587,
-    cy: 0.13182590420531197,
+    // Deep Spiral Point (Scepter Valley)
+    cx: -0.743643887037151,
+    cy: 0.131825904205330,
     scale: 1.0,
-    maxIter: 128
+    baseMaxIter: 128
 };
+
+// Julia Set Coords (Animated)
+let juliaState = {
+    cx: -0.7,
+    cy: 0.27015,
+    angle: 0
+};
+
+// Fractal Settings
+let fractalZoomSpeed = 1.02;
+let fractalQuality = 0.25;
+let fractalType = 'mandelbrot'; // 'mandelbrot' or 'julia'
 
 // Offscreen buffer for performance
 let fracCanvas = document.createElement('canvas');
@@ -1212,8 +1063,8 @@ let fracWidth = 0;
 let fracHeight = 0;
 
 function drawFractal(timestamp, ctx) {
-    // Performance: Render at lower resolution
-    const quality = 0.25; // 1/4 resolution (faster)
+    // 1. Settings from UI
+    const quality = fractalQuality;
     const w = Math.floor(renderWidth * quality);
     const h = Math.floor(renderHeight * quality);
 
@@ -1224,48 +1075,73 @@ function drawFractal(timestamp, ctx) {
         fracHeight = h;
     }
 
-    // Smooth Zoom
-    mandelbrotState.scale *= 1.02; // Zoom speed
-    if (mandelbrotState.scale > 1e13) mandelbrotState.scale = 1.0; // Reset loop
+    // 2. Zoom Logic
+    if (fractalType === 'mandelbrot') {
+        mandelbrotState.scale *= fractalZoomSpeed;
+        if (mandelbrotState.scale > 1e14) mandelbrotState.scale = 1.0; // Loop
+    } else {
+        // Julia doesn't zoom deep, it animates shape
+        juliaState.angle += (fractalZoomSpeed - 1.0) * 0.5; // Rotate based on speed diff
+        juliaState.cx = 0.7885 * Math.cos(juliaState.angle);
+        juliaState.cy = 0.7885 * Math.sin(juliaState.angle);
+    }
 
-    const scale = 3.0 / mandelbrotState.scale;
-    const cx = mandelbrotState.cx;
-    const cy = mandelbrotState.cy;
+    // 3. Render Setup
+    const scale = (fractalType === 'mandelbrot') ? (3.0 / mandelbrotState.scale) : 3.0;
+    const centerX = (fractalType === 'mandelbrot') ? mandelbrotState.cx : 0;
+    const centerY = (fractalType === 'mandelbrot') ? mandelbrotState.cy : 0;
 
-    // Pixel Manipulation
+    // Dynamic Iteration for Deep Zoom
+    let maxIter = mandelbrotState.baseMaxIter;
+    if (fractalType === 'mandelbrot') {
+        const zoomLevel = Math.log10(mandelbrotState.scale);
+        maxIter = Math.min(2000, Math.floor(128 + 50 * zoomLevel));
+    } else {
+        maxIter = 256; // Fixed for Julia
+    }
+
+    // 4. Pixel Loop
     const imgData = fracCtx.createImageData(w, h);
     const data = imgData.data;
 
     for (let py = 0; py < h; py++) {
         for (let px = 0; px < w; px++) {
             // Map pixel to complex plane
-            const x0 = cx + (px - w / 2) * scale / h; // Aspect ratio fix
-            const y0 = cy + (py - h / 2) * scale / h;
+            const x0 = centerX + (px - w / 2) * scale / h;
+            const y0 = centerY + (py - h / 2) * scale / h;
 
-            let x = 0;
-            let y = 0;
+            let x = (fractalType === 'mandelbrot') ? 0 : x0;
+            let y = (fractalType === 'mandelbrot') ? 0 : y0;
+
+            // Julia constant C
+            const jcx = juliaState.cx;
+            const jcy = juliaState.cy;
+
+            // Mandelbrot constant C is position (x0, y0)
+            const mcx = x0;
+            const mcy = y0;
+
             let iter = 0;
-            const max = mandelbrotState.maxIter;
-
-            while (x * x + y * y <= 4 && iter < max) {
-                const xtemp = x * x - y * y + x0;
-                y = 2 * x * y + y0;
+            while (x * x + y * y <= 4 && iter < maxIter) {
+                const xtemp = x * x - y * y + ((fractalType === 'mandelbrot') ? mcx : jcx);
+                y = 2 * x * y + ((fractalType === 'mandelbrot') ? mcy : jcy);
                 x = xtemp;
                 iter++;
             }
 
-            // Color mapping
+            // Color
             const pixelIndex = (py * w + px) * 4;
-            if (iter === max) {
-                data[pixelIndex] = 0;     // R
-                data[pixelIndex + 1] = 0; // G
-                data[pixelIndex + 2] = 0; // B
-                data[pixelIndex + 3] = 255; // A
+            if (iter === maxIter) {
+                data[pixelIndex] = 0;
+                data[pixelIndex + 1] = 0;
+                data[pixelIndex + 2] = 0;
+                data[pixelIndex + 3] = 255;
             } else {
-                // Psychedelic Rainbow
-                data[pixelIndex] = Math.sin(iter * 0.2 + 0) * 127 + 128; // R
-                data[pixelIndex + 1] = Math.sin(iter * 0.2 + 2) * 127 + 128; // G
-                data[pixelIndex + 2] = Math.sin(iter * 0.2 + 4) * 127 + 128; // B
+                const colorShift = timestamp * 0.05;
+                // Smooth coloring (optional, keep simple for speed first)
+                data[pixelIndex] = Math.sin(iter * 0.2 + colorShift) * 127 + 128; // R
+                data[pixelIndex + 1] = Math.sin(iter * 0.2 + 2 + colorShift) * 127 + 128; // G
+                data[pixelIndex + 2] = Math.sin(iter * 0.2 + 4 + colorShift) * 127 + 128; // B
                 data[pixelIndex + 3] = 255;
             }
         }
@@ -1273,14 +1149,18 @@ function drawFractal(timestamp, ctx) {
 
     fracCtx.putImageData(imgData, 0, 0);
 
-    // Draw upscale to main canvas
-    ctx.imageSmoothingEnabled = false; // Pixel art look
+    // Upscale draw
+    ctx.imageSmoothingEnabled = false;
     ctx.drawImage(fracCanvas, 0, 0, renderWidth, renderHeight);
 
-    // Add text overlay
+    // Info Overlay
     ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
     ctx.font = '16px monospace';
-    ctx.fillText(`Zoom: ${mandelbrotState.scale.toExponential(2)}`, 20, renderHeight - 40);
+    if (fractalType === 'mandelbrot') {
+        ctx.fillText(`Zoom: ${mandelbrotState.scale.toExponential(2)} Iter: ${maxIter}`, 20, renderHeight - 40);
+    } else {
+        ctx.fillText(`Julia: ${juliaState.cx.toFixed(3)} + ${juliaState.cy.toFixed(3)}i`, 20, renderHeight - 40);
+    }
 }
 
 
