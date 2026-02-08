@@ -1041,7 +1041,7 @@ let mandelbrotState = {
     cx: -0.743643887037151,
     cy: 0.131825904205330,
     scale: 1.0,
-    baseMaxIter: 128
+    baseMaxIter: 64 // Reduced base for performance
 };
 
 // Julia Set Coords (Animated)
@@ -1053,7 +1053,7 @@ let juliaState = {
 
 // Fractal Settings
 let fractalZoomSpeed = 1.02;
-let fractalQuality = 0.25;
+let fractalQuality = 0.2; // Reduced default quality for safety
 let fractalType = 'mandelbrot'; // 'mandelbrot' or 'julia'
 
 // Offscreen buffer for performance
@@ -1064,9 +1064,11 @@ let fracHeight = 0;
 
 function drawFractal(timestamp, ctx) {
     // 1. Settings from UI
-    const quality = fractalQuality;
+    const quality = fractalQuality || 0.2; // Fallback
     const w = Math.floor(renderWidth * quality);
     const h = Math.floor(renderHeight * quality);
+
+    if (w < 1 || h < 1) return; // Prevention
 
     if (fracWidth !== w || fracHeight !== h) {
         fracCanvas.width = w;
@@ -1091,13 +1093,14 @@ function drawFractal(timestamp, ctx) {
     const centerX = (fractalType === 'mandelbrot') ? mandelbrotState.cx : 0;
     const centerY = (fractalType === 'mandelbrot') ? mandelbrotState.cy : 0;
 
-    // Dynamic Iteration for Deep Zoom
+    // Dynamic Iteration for Deep Zoom (Performance Capped)
     let maxIter = mandelbrotState.baseMaxIter;
     if (fractalType === 'mandelbrot') {
         const zoomLevel = Math.log10(mandelbrotState.scale);
-        maxIter = Math.min(2000, Math.floor(128 + 50 * zoomLevel));
+        // Gentler curve: 64 + 20 * zoomLevel. Max ~350, not 800+
+        maxIter = Math.min(300, Math.floor(64 + 20 * zoomLevel));
     } else {
-        maxIter = 256; // Fixed for Julia
+        maxIter = 128; // Fixed for Julia
     }
 
     // 4. Pixel Loop
@@ -1170,12 +1173,20 @@ function render() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, renderWidth, renderHeight);
 
-    if (currentMode === 'physics') {
-        drawPhysicsMode(timestamp, ctx);
-    } else if (currentMode === 'audio') {
-        drawAudioVisualizer(timestamp, ctx);
-    } else if (currentMode === 'fractal') {
-        drawFractal(timestamp, ctx);
+    try {
+        if (currentMode === 'physics') {
+            drawPhysicsMode(timestamp, ctx);
+        } else if (currentMode === 'audio') {
+            drawAudioVisualizer(timestamp, ctx);
+        } else if (currentMode === 'fractal') {
+            drawFractal(timestamp, ctx);
+        }
+    } catch (e) {
+        console.error(e);
+        ctx.fillStyle = 'red';
+        ctx.font = '20px monospace';
+        ctx.fillText(`Error: ${e.message}`, 50, 50);
+        return; // Stop loop on error to prevent freeze
     }
 
     ctx.globalCompositeOperation = 'source-over';
