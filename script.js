@@ -109,7 +109,7 @@ const engine = Engine.create();
 let renderWidth = window.innerWidth;
 let renderHeight = window.innerHeight;
 
-// Create Renderer (but don't run it, we use custom loop)
+// --- FIX: Create proper Render Controller ---
 const renderController = Render.create({
     canvas: canvas,
     engine: engine,
@@ -121,18 +121,93 @@ const renderController = Render.create({
         showAngleIndicator: false
     }
 });
+// --------------------------------------------
 
-// ... (Physics Parameters) ...
+// Physics Parameters
+let gravityScale = 1;
+let airFriction = 0.05;
+let wallRestitution = 0.6;
+let gemRestitution = 0.6;
 
-// Resize helper to update render controller options
+let globalScale = 1.0;
+
+// UI Listeners for Physics
+const bindSlider = (id, targetVar, displayId, callback) => {
+    const el = document.getElementById(id);
+    if (el) {
+        el.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            if (displayId) document.getElementById(displayId).textContent = val;
+            if (callback) callback(val);
+        });
+    }
+};
+
+bindSlider('gravityControl', null, 'val-gravity', (v) => gravityScale = v);
+bindSlider('scaleControl', null, 'val-scale', (v) => {
+    const ratio = v / globalScale;
+    globalScale = v;
+    Composite.allBodies(engine.world).forEach(body => {
+        if (!body.isStatic && body.label !== 'gem_supply') Body.scale(body, ratio, ratio);
+    });
+});
+bindSlider('frictionControl', null, 'val-friction', (v) => {
+    airFriction = v;
+    Composite.allBodies(engine.world).forEach(body => { if (!body.isStatic) body.frictionAir = airFriction; });
+});
+bindSlider('restitutionControl', null, 'val-restitution', (v) => {
+    wallRestitution = v;
+    Composite.allBodies(engine.world).forEach(body => { if (body.label === 'wall') body.restitution = wallRestitution; });
+});
+bindSlider('gemRestitutionControl', null, 'val-gem-restitution', (v) => {
+    gemRestitution = v;
+    Composite.allBodies(engine.world).forEach(body => { if (!body.isStatic && body.label !== 'gem_supply') body.restitution = gemRestitution; });
+});
+
+
+// --- Fractal Mode Settings ---
+let fractalZoomSpeed = 1.02;
+let fractalQuality = 0.25;
+let fractalType = 'mandelbrot';
+
+bindSlider('zoomSpeedControl', null, 'val-zoom-speed', (v) => fractalZoomSpeed = v);
+bindSlider('qualityControl', null, 'val-quality', (v) => fractalQuality = v);
+
+const fracTypeEl = document.getElementById('fractalTypeControl');
+if (fracTypeEl) {
+    fracTypeEl.addEventListener('change', (e) => {
+        fractalType = e.target.value;
+        if (fractalType === 'mandelbrot') mandelbrotState.scale = 1.0;
+    });
+}
+
+const autoRotateCheckbox = document.getElementById('autoRotateControl');
+if (autoRotateCheckbox) {
+    autoRotateCheckbox.addEventListener('change', (e) => {
+        isAutoRotating = e.target.checked;
+        isSensorActive = !isAutoRotating;
+        const debugInfo = document.getElementById('debug-info');
+        if (debugInfo) debugInfo.style.display = isAutoRotating ? 'none' : 'block';
+    });
+}
+
+
+// Resize
 function resize() {
     renderWidth = window.innerWidth;
     renderHeight = window.innerHeight;
     canvas.width = renderWidth;
     canvas.height = renderHeight;
 
+    // Update render controller options
     renderController.options.width = renderWidth;
     renderController.options.height = renderHeight;
+
+    if (canvas) {
+        // Also ensure canvas attributes align
+        canvas.setAttribute('width', renderWidth);
+        canvas.setAttribute('height', renderHeight);
+    }
 }
 window.addEventListener('resize', resize);
 resize();
@@ -625,7 +700,9 @@ function drawPhysicsMode(timestamp, ctx) {
         }
     });
 
-    Render.bodies(engine, bodies, ctx);
+    // --- FIX: Use Render Controller ---
+    Render.bodies(renderController, bodies, ctx);
+    // ---------------------------------
 
     // Overlay
     bodies.forEach(b => {
@@ -832,7 +909,7 @@ function render() {
     const timestamp = Date.now();
     const ctx = canvas.getContext('2d');
 
-    // Heartbeat: Small Green Square in top left to prove we are trying to render
+    // Heartbeat: Small Green Square to prove render loop is alive
     ctx.fillStyle = 'lime';
     ctx.fillRect(0, 0, 5, 5);
 
