@@ -909,40 +909,26 @@ function render() {
     const timestamp = Date.now();
     const ctx = canvas.getContext('2d');
 
-    // Heartbeat: Small Green Square to prove render loop is alive
-    ctx.fillStyle = 'lime';
-    ctx.fillRect(0, 0, 5, 5);
-
     ctx.clearRect(0, 0, renderWidth, renderHeight);
 
-    // Explicit error handling per mode
+    // Explicit error handling per mode (Console only)
     if (currentMode === 'physics') {
         try {
             drawPhysicsMode(timestamp, ctx);
         } catch (e) {
-            ctx.fillStyle = 'red';
-            ctx.font = '16px monospace';
-            ctx.fillText("Phys Crash: " + e.message, 20, 100);
-            ctx.fillText(e.stack ? e.stack.substring(0, 50) : "No Stack", 20, 120);
-            console.error(e);
+            console.error("Phys Crash:", e);
         }
     } else if (currentMode === 'audio') {
         try {
             drawAudioVisualizer(timestamp, ctx);
         } catch (e) {
-            ctx.fillStyle = 'red';
-            ctx.font = '16px monospace';
-            ctx.fillText("Audio Crash: " + e.message, 20, 100);
-            console.error(e);
+            console.error("Audio Crash:", e);
         }
     } else if (currentMode === 'fractal') {
         try {
             drawFractal(timestamp, ctx);
         } catch (e) {
-            ctx.fillStyle = 'red';
-            ctx.font = '16px monospace';
-            ctx.fillText("Frac Crash: " + e.message, 20, 100);
-            console.error(e);
+            console.error("Frac Crash:", e);
         }
     }
 
