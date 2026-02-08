@@ -28,31 +28,56 @@
         </div>
 
         <div class="settings-panel">
+            <!-- Global Settings -->
             <div class="control-row">
                 <label class="checkbox-label">
                     <span>Auto-Rotate</span>
                     <input type="checkbox" id="autoRotateControl" checked>
                 </label>
             </div>
-            <div class="slider-group">
-                <label>Gravity <span id="val-gravity">1.0</span></label>
-                <input type="range" id="gravityControl" min="0" max="2" step="0.1" value="1">
+
+            <!-- Physics Mode Settings -->
+            <div id="physics-settings">
+                <div class="slider-group">
+                    <label>Gravity <span id="val-gravity">1.0</span></label>
+                    <input type="range" id="gravityControl" min="0" max="2" step="0.1" value="1">
+                </div>
+                <div class="slider-group">
+                    <label>Size <span id="val-scale">1.0</span></label>
+                    <input type="range" id="scaleControl" min="0.5" max="2.0" step="0.1" value="1.0">
+                </div>
+                <div class="slider-group">
+                    <label>Air Res <span id="val-friction">0.05</span></label>
+                    <input type="range" id="frictionControl" min="0" max="0.5" step="0.01" value="0.05">
+                </div>
+                <div class="slider-group">
+                    <label>Bounce <span id="val-restitution">0.6</span></label>
+                    <input type="range" id="restitutionControl" min="0" max="1.2" step="0.1" value="0.6">
+                </div>
+                <div class="slider-group">
+                    <label>Gem Bounce <span id="val-gem-restitution">0.6</span></label>
+                    <input type="range" id="gemRestitutionControl" min="0" max="1.2" step="0.1" value="0.6">
+                </div>
             </div>
-            <div class="slider-group">
-                <label>Size <span id="val-scale">1.0</span></label>
-                <input type="range" id="scaleControl" min="0.5" max="2.0" step="0.1" value="1.0">
-            </div>
-            <div class="slider-group">
-                <label>Air Res <span id="val-friction">0.05</span></label>
-                <input type="range" id="frictionControl" min="0" max="0.5" step="0.01" value="0.05">
-            </div>
-            <div class="slider-group">
-                <label>Bounce <span id="val-restitution">0.6</span></label>
-                <input type="range" id="restitutionControl" min="0" max="1.2" step="0.1" value="0.6">
-            </div>
-            <div class="slider-group">
-                <label>Gem Bounce <span id="val-gem-restitution">0.6</span></label>
-                <input type="range" id="gemRestitutionControl" min="0" max="1.2" step="0.1" value="0.6">
+
+            <!-- Fractal Mode Settings -->
+            <div id="fractal-settings" style="display: none;">
+                <div class="slider-group">
+                    <label>Zoom Speed <span id="val-zoom-speed">1.02</span></label>
+                    <input type="range" id="zoomSpeedControl" min="1.001" max="1.1" step="0.001" value="1.02">
+                </div>
+                <div class="slider-group">
+                    <label>Quality <span id="val-quality">0.25</span></label>
+                    <input type="range" id="qualityControl" min="0.1" max="1.0" step="0.05" value="0.25">
+                </div>
+                <div class="slider-group">
+                    <label>Type</label>
+                    <select id="fractalTypeControl"
+                        style="width: 100%; padding: 5px; background: rgba(0,0,0,0.5); color: white; border: 1px solid cyan;">
+                        <option value="mandelbrot">Mandelbrot</option>
+                        <option value="julia">Julia Set</option>
+                    </select>
+                </div>
             </div>
         </div>
     </div>

@@ -147,6 +147,8 @@ document.getElementById('gemRestitutionControl').addEventListener('input', (e) =
         }
     });
 });
+    });
+});
 document.getElementById('scaleControl').addEventListener('input', (e) => {
     const newScale = parseFloat(e.target.value);
     document.getElementById('val-scale').textContent = newScale;
@@ -159,6 +161,20 @@ document.getElementById('scaleControl').addEventListener('input', (e) => {
             Body.scale(body, ratio, ratio);
         }
     });
+});
+// --- Fractal Mode Settings ---
+document.getElementById('zoomSpeedControl').addEventListener('input', (e) => {
+    fractalZoomSpeed = parseFloat(e.target.value);
+    document.getElementById('val-zoom-speed').textContent = fractalZoomSpeed;
+});
+document.getElementById('qualityControl').addEventListener('input', (e) => {
+    fractalQuality = parseFloat(e.target.value);
+    document.getElementById('val-quality').textContent = fractalQuality;
+});
+document.getElementById('fractalTypeControl').addEventListener('change', (e) => {
+    fractalType = e.target.value;
+    // Reset zoom if switching back to Mandelbrot
+    if (fractalType === 'mandelbrot') mandelbrotState.scale = 1.0;
 });
 
 const autoRotateCheckbox = document.getElementById('autoRotateControl');
@@ -1301,16 +1317,30 @@ window.setMode = function (mode) {
 
     // Manage Engine State
     if (mode === 'physics') {
-        // Resume physics if needed (Matter.js runs on Engine.update call which is in render loop)
-        // Actually current implementation calls Engine.update explicitly in drawPhysicsMode.
-        // So switching modes automatically pauses physics. 
+        // Resume physics if needed
     } else if (mode === 'audio') {
         setupAudio(); // Try initializing if not already
     }
 
-    // Update Button Styles (Simple toggle class)
+    // Update Button Styles
     document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('btn-' + mode).classList.add('active');
+
+    // Toggle Settings Panels
+    const physSet = document.getElementById('physics-settings');
+    const fracSet = document.getElementById('fractal-settings');
+
+    if (mode === 'physics') {
+        if (physSet) physSet.style.display = 'block';
+        if (fracSet) fracSet.style.display = 'none';
+    } else if (mode === 'fractal') {
+        if (physSet) physSet.style.display = 'none';
+        if (fracSet) fracSet.style.display = 'block';
+    } else {
+        // Audio mode default (hide physics for now, could have audio settings later)
+        if (physSet) physSet.style.display = 'none';
+        if (fracSet) fracSet.style.display = 'none';
+    }
 
     // Update button text immediately
     if (currentMode === 'fractal') {
