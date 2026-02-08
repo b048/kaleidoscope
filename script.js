@@ -147,8 +147,7 @@ document.getElementById('gemRestitutionControl').addEventListener('input', (e) =
         }
     });
 });
-    });
-});
+
 document.getElementById('scaleControl').addEventListener('input', (e) => {
     const newScale = parseFloat(e.target.value);
     document.getElementById('val-scale').textContent = newScale;
