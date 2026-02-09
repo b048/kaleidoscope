@@ -363,15 +363,31 @@ Events.on(engine, 'collisionStart', (event) => {
         }
 
         if (eater && eaten) {
+            // Sleep check: Sleeping eyes cannot eat
+            if (eater.plugin.emotion === 'sleep') return;
+
+            // Eat!
+            // Grow Eater: 50% of eaten area (User Request)
             const areaEaten = eaten.area;
             const areaEater = eater.area;
-            const growthFactor = Math.sqrt(1 + (areaEaten * 0.1) / areaEater);
-            if (eater.area < 30000) {
+            const growthFactor = Math.sqrt(1 + (areaEaten * 0.5) / areaEater);
+
+            // Limit max size
+            if (eater.area < 50000) {
                 Body.scale(eater, growthFactor, growthFactor);
                 eater.mass *= growthFactor;
             }
+
+            // Power-up: Eat Glowing -> Surprised + 1 min Glow
+            if (eaten.plugin && eaten.plugin.type === 'glowing') {
+                eater.plugin.emotion = 'surprised';
+                eater.plugin.emotionTimer = 120; // 2 seconds surprise
+                eater.plugin.glowTimer = 3600; // 1 minute glow
+            }
+
             spawnParticle(eaten.position.x, eaten.position.y, eaten.plugin.color);
             spawnParticle(eaten.position.x, eaten.position.y, 'white');
+
             Composite.remove(engine.world, eaten);
         }
     }
@@ -747,8 +763,8 @@ function drawPhysicsMode(timestamp, ctx) {
 
                 const swimCycle = Math.sin(timestamp * 0.005 + b.plugin.noiseOffset);
                 if (swimCycle > 0) {
-                    // Increased kick strength for freer movement (User Request)
-                    let kickStrength = 0.0006 * b.mass * (globalScale ** 1.5); // Doubled from 0.0003
+                    // Increased kick strength for freer movement (User Request) - Boosted significantly
+                    let kickStrength = 0.0015 * b.mass * (globalScale ** 1.5); // 5x original
 
                     // Personality Speed Multipliers
                     if (b.plugin.personality === 'lazy') kickStrength *= 0.5;
