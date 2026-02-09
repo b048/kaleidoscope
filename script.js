@@ -447,7 +447,7 @@ function initPhysicsWorld() {
         isAutoRotating = false; // Disable gravity rotation
         wallRestitution = 1.0;
         gemRestitution = 1.0;
-        CONFIG.initialBeadCount = calculateInitialCount(0.25); // Half of normal
+        CONFIG.initialBeadCount = calculateInitialCount(0.125); // 1/8th of normal (User Request: "Halve again")
     } else if (physicsSubMode === 'eye') {
         gravityScale = 1.0;
         airFriction = 0.05;
@@ -473,8 +473,6 @@ function initPhysicsWorld() {
     }
 
     updateUI('gravityControl', gravityScale);
-    updateUI('frictionControl', airFriction);
-    // Let's unify.
     updateUI('frictionControl', airFriction);
     updateUI('restitutionControl', wallRestitution);
     updateUI('gemRestitutionControl', gemRestitution);
@@ -503,11 +501,14 @@ function initPhysicsWorld() {
             }
         }
 
-        // Zero-G Initial Velocity
+        // Zero-G Specific Properties
         if (physicsSubMode === 'float') {
+            gem.friction = 0;
+            gem.frictionStatic = 0;
+            gem.restitution = 1.0;
             Body.setVelocity(gem, {
-                x: (Math.random() - 0.5) * 20,
-                y: (Math.random() - 0.5) * 20
+                x: (Math.random() - 0.5) * 15,
+                y: (Math.random() - 0.5) * 15
             });
         }
 
@@ -743,6 +744,27 @@ async function setupAudio() {
 function drawPhysicsMode(timestamp, ctx) {
     // 0. Supply Logic
     checkSupplyAndCleanup();
+
+    // Zero-G Thermal Agitation (Keep things moving)
+    if (physicsSubMode === 'float') {
+        const bodies = Composite.allBodies(engine.world);
+        bodies.forEach(body => {
+            if (body.isStatic) return;
+            // Prevent stalling
+            if (body.speed < 1.0) {
+                const force = 0.0005 * body.mass;
+                Body.applyForce(body, body.position, {
+                    x: (Math.random() - 0.5) * force,
+                    y: (Math.random() - 0.5) * force
+                });
+            }
+            // Ensure no friction/damping (in case it reset)
+            body.friction = 0;
+            body.frictionStatic = 0;
+            body.frictionAir = 0;
+            body.restitution = 1.0;
+        });
+    }
 
     // Auto Rotation Logic (Step-wise / "Kakukaku")
     if (isAutoRotating) {
