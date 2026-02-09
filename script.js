@@ -465,8 +465,17 @@ window.toggleEraser = function () {
     isEraserActive = !isEraserActive;
     const btn = document.getElementById('btn-eraser');
     if (btn) {
-        btn.textContent = isEraserActive ? "Eraser: ON" : "Eraser: OFF";
-        btn.style.background = isEraserActive ? "rgba(255, 0, 0, 0.5)" : "rgba(0,0,0,0.5)";
+        if (isEraserActive) {
+            btn.style.background = "cyan";
+            btn.style.color = "black";
+            btn.style.boxShadow = "0 0 15px cyan";
+            btn.textContent = "Eraser Active";
+        } else {
+            btn.style.background = "rgba(0,0,0,0.3)";
+            btn.style.color = "cyan";
+            btn.style.boxShadow = "none";
+            btn.textContent = "Eraser Mode";
+        }
     }
 
     // Fix persistent scared state: Reset emotions when turning OFF
@@ -480,6 +489,7 @@ window.toggleEraser = function () {
 };
 
 // Eraser Logic Function
+// Eraser Logic Function
 function handleEraser(x, y) {
     if (!isEraserActive) return;
 
@@ -488,12 +498,24 @@ function handleEraser(x, y) {
     const affected = Matter.Query.point(bodies, { x: x, y: y });
 
     affected.forEach(body => {
-        if (body.label === 'wall') return; // Cannot erase walls
+        // Allow erasing everything except walls
+        if (body.label === 'wall') return;
 
         const isEye = body.plugin && (body.plugin.type === 'eye' || body.plugin.type === 'super_eye');
 
+        // Check if it's in a supply slot (static)
+        const slot = supplySlots.find(s => s.occupiedBy === body);
+
+        // If it is in a supply slot -> ERASE IT (User Request: "Erase eyes in box")
+        if (slot) {
+            spawnParticle(body.position.x, body.position.y, body.render.fillStyle);
+            Composite.remove(engine.world, body);
+            slot.occupiedBy = null; // Respawn trigger
+            return;
+        }
+
         if (isEye) {
-            // EYES: Scared & Flee
+            // EYES (Active in field): Scared & Flee
             body.plugin.emotion = 'scared';
             body.plugin.emotionTimer = 60; // 1 sec scare
 
@@ -507,13 +529,9 @@ function handleEraser(x, y) {
             }
 
         } else {
-            // NORMAL GEMS: Delete (Including Supply Box)
+            // NORMAL GEMS: Delete
             spawnParticle(body.position.x, body.position.y, body.render.fillStyle);
             Composite.remove(engine.world, body);
-
-            // If it was in a supply slot, clear the reference so it respawns
-            const slot = supplySlots.find(s => s.occupiedBy === body);
-            if (slot) slot.occupiedBy = null;
         }
     });
 }
@@ -1009,35 +1027,26 @@ function drawPhysicsMode(timestamp, ctx) {
                 ctx.lineTo(center.x + radius, center.y);
                 ctx.stroke();
             } else if (b.plugin.emotion === 'scared') {
-                // Scared Face: Blue tint, shaking pupils
+                // Scared Face: Cyan tint, SINGLE trembling pupil (Cyclops)
                 ctx.fillStyle = '#E0FFFF'; // Light Cyan background
                 ctx.beginPath();
                 ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
                 ctx.fill();
 
-                // Trembling Pupils
-                const trembleX = (Math.random() - 0.5) * 4 * globalScale;
-                const trembleY = (Math.random() - 0.5) * 4 * globalScale;
+                // Trembling Pupil
+                const trembleX = (Math.random() - 0.5) * 6 * globalScale;
+                const trembleY = (Math.random() - 0.5) * 6 * globalScale;
 
                 ctx.fillStyle = 'black';
-                // Left Pupil
                 ctx.beginPath();
-                ctx.arc(center.x - radius * 0.4 + trembleX, center.y + trembleY, radius * 0.15, 0, 2 * Math.PI);
-                ctx.fill();
-                // Right Pupil
-                ctx.beginPath();
-                ctx.arc(center.x + radius * 0.4 + trembleX, center.y + trembleY, radius * 0.15, 0, 2 * Math.PI);
+                ctx.arc(center.x + trembleX, center.y + trembleY, radius * 0.4, 0, 2 * Math.PI); // Big dilated pupil
                 ctx.fill();
 
-                // Squiggly Mouth
+                // Sweat Drop (Optional detail)
+                ctx.fillStyle = 'rgba(0, 100, 255, 0.5)';
                 ctx.beginPath();
-                ctx.moveTo(center.x - radius * 0.3, center.y + radius * 0.4);
-                ctx.lineTo(center.x - radius * 0.1, center.y + radius * 0.5);
-                ctx.lineTo(center.x + radius * 0.1, center.y + radius * 0.4);
-                ctx.lineTo(center.x + radius * 0.3, center.y + radius * 0.5);
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 1;
-                ctx.stroke();
+                ctx.arc(center.x + radius, center.y - radius, radius * 0.3, 0, 2 * Math.PI);
+                ctx.fill();
             } else if (b.plugin.emotion === 'tired') {
                 ctx.fillStyle = 'white';
                 ctx.beginPath();
