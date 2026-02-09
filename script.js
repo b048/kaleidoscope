@@ -468,6 +468,15 @@ window.toggleEraser = function () {
         btn.textContent = isEraserActive ? "Eraser: ON" : "Eraser: OFF";
         btn.style.background = isEraserActive ? "rgba(255, 0, 0, 0.5)" : "rgba(0,0,0,0.5)";
     }
+
+    // Fix persistent scared state: Reset emotions when turning OFF
+    if (!isEraserActive) {
+        Composite.allBodies(engine.world).forEach(b => {
+            if (b.plugin && b.plugin.emotion === 'scared') {
+                b.plugin.emotion = 'normal';
+            }
+        });
+    }
 };
 
 // Eraser Logic Function
@@ -479,7 +488,7 @@ function handleEraser(x, y) {
     const affected = Matter.Query.point(bodies, { x: x, y: y });
 
     affected.forEach(body => {
-        if (body.isStatic || body.label === 'wall') return;
+        if (body.label === 'wall') return; // Cannot erase walls
 
         const isEye = body.plugin && (body.plugin.type === 'eye' || body.plugin.type === 'super_eye');
 
@@ -498,9 +507,13 @@ function handleEraser(x, y) {
             }
 
         } else {
-            // NORMAL GEMS: Delete
+            // NORMAL GEMS: Delete (Including Supply Box)
             spawnParticle(body.position.x, body.position.y, body.render.fillStyle);
             Composite.remove(engine.world, body);
+
+            // If it was in a supply slot, clear the reference so it respawns
+            const slot = supplySlots.find(s => s.occupiedBy === body);
+            if (slot) slot.occupiedBy = null;
         }
     });
 }
@@ -996,11 +1009,34 @@ function drawPhysicsMode(timestamp, ctx) {
                 ctx.lineTo(center.x + radius, center.y);
                 ctx.stroke();
             } else if (b.plugin.emotion === 'scared') {
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 3 * globalScale;
+                // Scared Face: Blue tint, shaking pupils
+                ctx.fillStyle = '#E0FFFF'; // Light Cyan background
                 ctx.beginPath();
-                ctx.moveTo(center.x - radius, center.y);
-                ctx.lineTo(center.x + radius, center.y);
+                ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
+                ctx.fill();
+
+                // Trembling Pupils
+                const trembleX = (Math.random() - 0.5) * 4 * globalScale;
+                const trembleY = (Math.random() - 0.5) * 4 * globalScale;
+
+                ctx.fillStyle = 'black';
+                // Left Pupil
+                ctx.beginPath();
+                ctx.arc(center.x - radius * 0.4 + trembleX, center.y + trembleY, radius * 0.15, 0, 2 * Math.PI);
+                ctx.fill();
+                // Right Pupil
+                ctx.beginPath();
+                ctx.arc(center.x + radius * 0.4 + trembleX, center.y + trembleY, radius * 0.15, 0, 2 * Math.PI);
+                ctx.fill();
+
+                // Squiggly Mouth
+                ctx.beginPath();
+                ctx.moveTo(center.x - radius * 0.3, center.y + radius * 0.4);
+                ctx.lineTo(center.x - radius * 0.1, center.y + radius * 0.5);
+                ctx.lineTo(center.x + radius * 0.1, center.y + radius * 0.4);
+                ctx.lineTo(center.x + radius * 0.3, center.y + radius * 0.5);
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 1;
                 ctx.stroke();
             } else if (b.plugin.emotion === 'tired') {
                 ctx.fillStyle = 'white';
