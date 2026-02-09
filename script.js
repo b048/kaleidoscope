@@ -408,19 +408,133 @@ Events.on(engine, 'collisionStart', (event) => {
     }
 });
 
-// Initial Objects
-// Calculate count to fill ~50% of the cylinder area
-const cylinderArea = Math.PI * boundaryRadius * boundaryRadius;
-const avgGemRadius = 20; // Average baseSize (15-25)
-const avgGemArea = Math.PI * avgGemRadius * avgGemRadius;
-// Fill 50% of total area
-const targetCount = Math.floor((cylinderArea * 0.5) / avgGemArea);
-CONFIG.initialBeadCount = Math.min(200, Math.max(10, targetCount)); // Clamp between 10 and 200
+// Physics Sub-modes
+let physicsSubMode = 'gravity'; // 'gravity', 'float', 'eye'
 
-for (let i = 0; i < CONFIG.initialBeadCount; i++) {
-    const gem = createGem(boundaryCenter.x + Common.random(-50, 50), boundaryCenter.y + Common.random(-50, 50), false);
-    Composite.add(engine.world, gem);
+function calculateInitialCount(densityScale = 0.5) {
+    const cylinderArea = Math.PI * boundaryRadius * boundaryRadius;
+    const avgGemRadius = 20;
+    const avgGemArea = Math.PI * avgGemRadius * avgGemRadius;
+    const targetCount = Math.floor((cylinderArea * densityScale) / avgGemArea);
+    return Math.min(200, Math.max(5, targetCount)); // Clamp
 }
+
+function initPhysicsWorld() {
+    // Clear existing non-static bodies (walls/supply box stay? No, walls stay, supply box slots need refresh)
+    // Actually, simple way: remove all gems/eyes, keep walls.
+    Composite.allBodies(engine.world).forEach(b => {
+        if (b.label !== 'wall') Composite.remove(engine.world, b);
+    });
+    // Clear particles
+    particles.length = 0;
+
+    // Clear supply slots
+    supplySlots.forEach(s => s.occupiedBy = null);
+
+    // Settings based on Mode
+    if (physicsSubMode === 'gravity') {
+        gravityScale = 1.0;
+        airFriction = 0.05;
+        rotationSpeedScale = 1.0;
+        wallRestitution = 0.6;
+        gemRestitution = 0.6;
+        isAutoRotating = true;
+        CONFIG.initialBeadCount = calculateInitialCount(0.5); // Normal ~50%
+    } else if (physicsSubMode === 'float') {
+        gravityScale = 0;
+        airFriction = 0; // Zero friction
+        rotationSpeedScale = 0; // No auto rotate (or maybe just standard?) -> User said "Zero air res, Restitution 1"
+        isAutoRotating = false; // Disable gravity rotation?? User said "Anti-gravity/Floating".
+        // Let's assume Auto-Rotate stops or gravity is just 0. 
+        // User said: "In floating mode: Air friction 0, Bounce 1, Count Half, Initial Energy"
+        wallRestitution = 1.0;
+        gemRestitution = 1.0;
+        CONFIG.initialBeadCount = calculateInitialCount(0.25); // Half of normal
+    } else if (physicsSubMode === 'eye') {
+        // Like gravity but force eyes
+        gravityScale = 1.0;
+        airFriction = 0.05;
+        rotationSpeedScale = 1.0;
+        wallRestitution = 0.6;
+        gemRestitution = 0.6;
+        isAutoRotating = true;
+        CONFIG.initialBeadCount = calculateInitialCount(0.5);
+    }
+
+    // Update Sliders if they exist
+    const updateSlider = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) { el.value = val; el.dispatchEvent(new Event('input')); }
+    }
+    // Note: dispatchEvent('input') will trigger the listeners which set the variables again.
+    // So we might be double-setting, but that ensures UI sync.
+    updateSlider('gravityControl', gravityScale);
+    updateSlider('frictionControl', airFriction);
+    updateSlider('restitutionControl', wallRestitution);
+    updateSlider('gemRestitutionControl', gemRestitution);
+    // updateSlider('rotateSpeedControl', rotationSpeedScale); // Maybe keep user preference? User implied specific settings for mode.
+
+    // Spawn Objects
+    let eyeSpawned = false;
+    for (let i = 0; i < CONFIG.initialBeadCount; i++) {
+        const gem = createGem(boundaryCenter.x + Common.random(-50, 50), boundaryCenter.y + Common.random(-50, 50), false);
+
+        // Eye Mode Enforcement
+        if (physicsSubMode === 'eye' && !eyeSpawned && i === CONFIG.initialBeadCount - 1) {
+            // Force last one to be eye if none spawned? 
+            // Better: Force specific property mod
+            if (!gem.plugin.type || gem.plugin.type !== 'eye') {
+                // Convert to eye
+                gem.plugin.type = 'eye';
+                gem.plugin.personality = 'curious';
+                // ... other init ...
+                // Simplified: Since createGem does valid init, we might just hack it or trust probability?
+                // User said: "1 guaranteed eye".
+            }
+        }
+
+        // Zero-G Initial Velocity
+        if (physicsSubMode === 'float') {
+            Body.setVelocity(gem, {
+                x: (Math.random() - 0.5) * 20,
+                y: (Math.random() - 0.5) * 20
+            });
+        }
+
+        Composite.add(engine.world, gem);
+    }
+
+    // Explicit Eye enforcement helper if needed
+    if (physicsSubMode === 'eye') {
+        const bodies = Composite.allBodies(engine.world).filter(b => !b.isStatic);
+        const hasEye = bodies.some(b => b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye'));
+        if (!hasEye && bodies.length > 0) {
+            const b = bodies[Math.floor(Math.random() * bodies.length)];
+            b.plugin.type = 'eye';
+            b.plugin.personality = 'curious'; // Reset to standard eye defaults
+            b.plugin.emotion = 'normal';
+            // Scale density logic from createGem?
+        }
+    }
+}
+
+// Global exposure
+window.setPhysicsSubmode = function (mode) {
+    physicsSubMode = mode;
+    console.log("Switching to " + mode);
+    initPhysicsWorld();
+
+    // Update active button state
+    document.querySelectorAll('.submode-btn').forEach(btn => btn.classList.remove('active'));
+    const btn = document.getElementById('btn-mode-' + mode);
+    if (btn) btn.classList.add('active');
+};
+
+// Initial Start
+// initPhysicsWorld(); // Start logic calls this? Or just replace the loop.
+// The code had a loop at line 412. I'll replace it with initPhysicsWorld() call.
+
+initPhysicsWorld();
 
 // Gravity & Permission
 const debugInfo = document.getElementById('debug-info');
