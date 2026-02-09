@@ -13,7 +13,7 @@ const Engine = Matter.Engine,
 
 // Configuration
 const CONFIG = {
-    initialBeadCount: 64,
+    initialBeadCount: 24,
     wallThickness: 100,
     gemColors: [
         'rgba(255, 0, 0, 0.7)',    // Red
@@ -236,8 +236,8 @@ for (let row = 0; row < CONFIG.slotRows; row++) {
 
 // Generate Gemstones
 function createGem(x, y, isStaticInBox = false) {
-    // Randomize size more (User Request)
-    const baseSize = 10 + Math.random() * 30; // 10 to 40 range
+    // Randomize size more (User Request) -> Reverted to smaller variation
+    const baseSize = 15 + Math.random() * 10; // 15 to 25 range
     let size = baseSize * (isStaticInBox ? 1.0 : globalScale);
 
     const sides = Math.floor(3 + Math.random() * 5);
