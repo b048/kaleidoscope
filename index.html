@@ -27,6 +27,37 @@
                 title="Settings">⚙️</button>
         </div>
 
+        <!-- Physics Sub-Modes (Visible in Physics Mode) -->
+        <div id="physics-modes"
+            style="display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; padding: 5px; margin-bottom: 5px;">
+            <button id="btn-mode-gravity" class="submode-btn active" onclick="setPhysicsSubmode('gravity')"
+                style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #555; color:white; border-radius:15px; padding:5px;">Auto-G</button>
+            <button id="btn-mode-float" class="submode-btn" onclick="setPhysicsSubmode('float')"
+                style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #555; color:white; border-radius:15px; padding:5px;">Zero-G</button>
+            <button id="btn-mode-eye" class="submode-btn" onclick="setPhysicsSubmode('eye')"
+                style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #555; color:white; border-radius:15px; padding:5px;">Eye</button>
+            <button id="btn-eraser" class="submode-btn" onclick="toggleEraser()"
+                style="flex:1; background:rgba(0,0,0,0.4); border:1px solid cyan; color:cyan; border-radius:15px; padding:5px; font-weight:bold;">
+                Eraser</button>
+        </div>
+        <script>
+            // Simple Active State Toggle Helper
+            const subBtns = document.querySelectorAll('.submode-btn');
+            subBtns.forEach(btn => {
+                if (btn.id !== 'btn-eraser') {
+                    btn.addEventListener('click', () => {
+                        subBtns.forEach(b => { if (b.id !== 'btn-eraser') b.style.background = 'rgba(0,0,0,0.4)'; });
+                        btn.style.background = 'rgba(0,255,255,0.3)';
+                    });
+                }
+            });
+            // Init active
+            setTimeout(() => {
+                const gBtn = document.getElementById('btn-mode-gravity');
+                if (gBtn) gBtn.style.background = 'rgba(0,255,255,0.3)';
+            }, 100);
+        </script>
+
         <div class="settings-panel">
             <!-- Global Settings -->
             <div class="control-row">
