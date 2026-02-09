@@ -109,20 +109,6 @@ const engine = Engine.create();
 let renderWidth = window.innerWidth;
 let renderHeight = window.innerHeight;
 
-// --- FIX: Create proper Render Controller ---
-const renderController = Render.create({
-    canvas: canvas,
-    engine: engine,
-    options: {
-        width: renderWidth,
-        height: renderHeight,
-        wireframes: false,
-        background: 'transparent',
-        showAngleIndicator: false
-    }
-});
-// --------------------------------------------
-
 // Physics Parameters
 let gravityScale = 1;
 let airFriction = 0.05;
@@ -198,16 +184,7 @@ function resize() {
     renderHeight = window.innerHeight;
     canvas.width = renderWidth;
     canvas.height = renderHeight;
-
-    // Update render controller options
-    renderController.options.width = renderWidth;
-    renderController.options.height = renderHeight;
-
-    if (canvas) {
-        // Also ensure canvas attributes align
-        canvas.setAttribute('width', renderWidth);
-        canvas.setAttribute('height', renderHeight);
-    }
+    // No render controller options update needed
 }
 window.addEventListener('resize', resize);
 resize();
@@ -514,8 +491,10 @@ async function setupAudio() {
 // ----------------------------------------------------------------------
 
 function drawPhysicsMode(timestamp, ctx) {
+    // 0. Supply Logic
     checkSupplyAndCleanup();
 
+    // Auto Rotation Logic
     if (isAutoRotating) {
         const speedVar = Math.sin(timestamp * 0.001) * 0.005 + 0.01;
         autoRotateAngle += speedVar;
@@ -523,6 +502,7 @@ function drawPhysicsMode(timestamp, ctx) {
         engine.world.gravity.x = Math.sin(autoRotateAngle) * gravityScale * pulse;
         engine.world.gravity.y = Math.cos(autoRotateAngle) * gravityScale * pulse;
 
+        // Turbulence (Gated by Gravity Scale)
         if (gravityScale > 0.1 && Math.random() < 0.05) {
             Composite.allBodies(engine.world).forEach(b => {
                 if (!b.isStatic && Math.random() < 0.3) {
@@ -535,224 +515,519 @@ function drawPhysicsMode(timestamp, ctx) {
         }
     }
 
-    Engine.update(engine, 1000 / 60);
-
+    // Update Logic & AI Behavior
     const bodies = Composite.allBodies(engine.world);
 
-    // AI Logic Loop
     bodies.forEach(b => {
         if (b.label === 'gem' || b.label === 'gem_transition') b.frictionAir = airFriction;
 
-        // Skip AI if not Eye/SuperEye or if static
-        if (!b.plugin || (b.plugin.type !== 'eye' && b.plugin.type !== 'super_eye') || b.isStatic || b.label === 'gem_supply') return;
+        // --- Eye Logic (Emotions & AI) ---
+        if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye') && !b.isStatic && b.label !== 'gem_supply') {
 
-        // Initialize missing props
-        if (typeof b.plugin.stuckCounter === 'undefined') b.plugin.stuckCounter = 0;
-        if (typeof b.plugin.fascinatedTimer === 'undefined') b.plugin.fascinatedTimer = 0;
-        if (typeof b.plugin.cooldownTimer === 'undefined') b.plugin.cooldownTimer = 0;
+            // Fix undefined checks
+            if (typeof b.plugin.stuckCounter === 'undefined') b.plugin.stuckCounter = 0;
+            if (typeof b.plugin.fascinatedTimer === 'undefined') b.plugin.fascinatedTimer = 0;
+            if (typeof b.plugin.cooldownTimer === 'undefined') b.plugin.cooldownTimer = 0;
 
-        // Personality Multiplier
-        let scanRangeMult = 1.0;
-        if (b.plugin.personality === 'curious') scanRangeMult = 1.5;
-        if (b.plugin.personality === 'shy') scanRangeMult = 0.8;
-        if (b.plugin.personality === 'hyper') scanRangeMult = 1.2;
+            // --- Personality Parameters ---
+            let scanRangeMult = 1.0;
+            if (b.plugin.personality === 'curious') scanRangeMult = 1.5;
+            if (b.plugin.personality === 'shy') scanRangeMult = 0.8;
+            if (b.plugin.personality === 'hyper') scanRangeMult = 1.2;
 
-        const scanRange = 250 * globalScale * scanRangeMult;
-        let nearestGlowing = null;
-        let nearestDist = Infinity;
-        let nearestOther = null;
-        let nearestOtherDist = Infinity;
+            // --- 1. AI: Scan Neighbors ---
+            const scanRange = 250 * globalScale * scanRangeMult;
+            let nearestGlowing = null;
+            let nearestDist = Infinity;
+            let nearestOther = null; // For Shy/Aggressive logic
+            let nearestOtherDist = Infinity;
 
-        // Neighbor Scan
-        bodies.forEach(other => {
-            if (b === other || other.isStatic || other.label === 'gem_supply') return;
-            const dVector = Vector.sub(other.position, b.position);
-            const dist = Vector.magnitude(dVector);
-            if (dist < scanRange && other.plugin) {
-                if (dist < nearestOtherDist) {
-                    nearestOther = other;
-                    nearestOtherDist = dist;
+            bodies.forEach(other => {
+                if (b === other || other.isStatic || other.label === 'gem_supply') return;
+
+                const dVector = Vector.sub(other.position, b.position);
+                const dist = Vector.magnitude(dVector);
+
+                if (dist < scanRange && other.plugin) {
+                    // Track nearest non-glowing for social logic
+                    if (dist < nearestOtherDist) {
+                        nearestOther = other;
+                        nearestOtherDist = dist;
+                    }
+
+                    // Check for Fascination (Must be glowing type)
+                    if ((other.plugin.type === 'glowing' || other.plugin.type === 'super_eye') && dist < nearestDist) {
+                        nearestGlowing = other;
+                        nearestDist = dist;
+                    }
+
+                    const dir = Vector.normalise(dVector);
+
+                    // Social Forces based on Personality
+
+                    // SHY: Avoid everyone
+                    if (b.plugin.personality === 'shy' && dist < 120 * globalScale) {
+                        const force = Vector.mult(dir, -0.0005 * b.mass); // Flee
+                        Body.applyForce(b, b.position, force);
+                    }
+
+                    // AGGRESSIVE: Chase DIFFERENT color
+                    else if (b.plugin.personality === 'aggressive' && other.plugin.color !== b.plugin.color) {
+                        const force = Vector.mult(dir, 0.0005 * b.mass); // Chase
+                        Body.applyForce(b, b.position, force);
+                    }
+
+                    // Standard behaviors (if not overridden by strong personality traits)
+                    if (b.plugin.personality !== 'shy') {
+                        // 1. Same Color -> Attract to Eat (Weak attraction)
+                        if (other.plugin.color === b.plugin.color) {
+                            const force = Vector.mult(dir, 0.0003 * b.mass);
+                            Body.applyForce(b, b.position, force);
+                        }
+                        // 2. Complementary Color -> Place around self (Spring-like)
+                        else if (other.plugin.color === b.plugin.complementary) {
+                            const idealDist = 90 * globalScale;
+                            const delta = dist - idealDist;
+                            const forceMag = delta * 0.00005 * b.mass;
+                            const force = Vector.mult(dir, forceMag);
+                            Body.applyForce(other, other.position, Vector.neg(force));
+                            Body.applyForce(b, b.position, Vector.mult(force, 0.1));
+                        }
+                    }
                 }
-                if ((other.plugin.type === 'glowing' || other.plugin.type === 'super_eye') && dist < nearestDist) {
-                    nearestGlowing = other;
-                    nearestDist = dist;
-                }
-                const dir = Vector.normalise(dVector);
+            });
 
-                if (b.plugin.personality === 'shy' && dist < 120 * globalScale) {
-                    Body.applyForce(b, b.position, Vector.mult(dir, -0.0005 * b.mass));
-                } else if (b.plugin.personality === 'aggressive' && other.plugin.color !== b.plugin.color) {
-                    Body.applyForce(b, b.position, Vector.mult(dir, 0.0005 * b.mass));
+            // --- Fascination Logic & Boredom ---
+
+            // Cooldown handling
+            if (b.plugin.cooldownTimer > 0) {
+                b.plugin.cooldownTimer--;
+                b.plugin.isFascinated = false;
+                b.plugin.fascinatedTarget = null;
+            } else {
+                // Check if we SHOULD get fascinated - ALL personalities can be fascinated now
+                let canBeFascinated = true;
+
+                if (nearestGlowing && canBeFascinated) {
+                    b.plugin.isFascinated = true;
+                    b.plugin.fascinatedTarget = nearestGlowing;
+                    b.plugin.fascinatedTimer++; // Increment timer
+
+                    // Boredom Threshold based on Personality
+                    let boredomThreshold = 600; // Default 10s
+                    if (b.plugin.personality === 'curious') boredomThreshold = 900; // 15s
+                    if (b.plugin.personality === 'shy') boredomThreshold = 180; // 3s
+                    if (b.plugin.personality === 'aggressive') boredomThreshold = 120; // 2s
+                    if (b.plugin.personality === 'lazy') boredomThreshold = 300; // 5s
+                    if (b.plugin.personality === 'hyper') boredomThreshold = 180; // 3s
+
+                    if (b.plugin.fascinatedTimer > boredomThreshold) {
+                        b.plugin.isFascinated = false;
+                        b.plugin.fascinatedTarget = null;
+                        b.plugin.cooldownTimer = 900; // 15s cooldown
+                        b.plugin.fascinatedTimer = 0;
+
+                        // Action on bored: Move away or switch action
+                        b.plugin.emotion = 'tired';
+                        b.plugin.emotionTimer = 60;
+                        Body.applyForce(b, b.position, {
+                            x: (Math.random() - 0.5) * 0.05 * b.mass,
+                            y: (Math.random() - 0.5) * 0.05 * b.mass
+                        });
+                    }
+                } else {
+                    b.plugin.isFascinated = false;
+                    b.plugin.fascinatedTarget = null;
+                    b.plugin.fascinatedTimer = Math.max(0, b.plugin.fascinatedTimer - 1); // Decay
                 }
-                if (b.plugin.personality !== 'shy') {
-                    if (other.plugin.color === b.plugin.color) {
-                        Body.applyForce(b, b.position, Vector.mult(dir, 0.0003 * b.mass));
-                    } else if (other.plugin.color === b.plugin.complementary) {
-                        const forceMag = (dist - 90 * globalScale) * 0.00005 * b.mass;
-                        const force = Vector.mult(dir, forceMag);
-                        Body.applyForce(other, other.position, Vector.neg(force));
-                        Body.applyForce(b, b.position, Vector.mult(force, 0.1));
+            }
+
+
+            // 1. Stuck Check -> Angular
+            const speed = b.speed;
+            if (speed < 0.5) {
+                b.plugin.stuckCounter++;
+            } else {
+                b.plugin.stuckCounter = Math.max(0, b.plugin.stuckCounter - 1);
+            }
+
+            // Trigger Angry
+            if (b.plugin.emotion !== 'angry' && b.plugin.emotion !== 'tired' && b.plugin.emotion !== 'scared' && b.plugin.stuckCounter > 1000) {
+                b.plugin.emotion = 'angry';
+                b.plugin.emotionTimer = 180; // 3s
+            }
+
+            // State Counters
+            if (b.plugin.emotion === 'angry') {
+                b.plugin.emotionTimer--;
+                if (b.plugin.emotionTimer <= 0) {
+                    b.plugin.emotion = 'tired';
+                    b.plugin.emotionTimer = 120; // 2s
+                }
+            } else if (b.plugin.emotion === 'tired') {
+                b.plugin.emotionTimer--;
+                if (b.plugin.emotionTimer <= 0) {
+                    b.plugin.emotion = 'normal';
+                    b.plugin.stuckCounter = 0;
+                }
+            } else if (b.plugin.emotion === 'scared') {
+                Body.applyForce(b, b.position, {
+                    x: (Math.random() - 0.5) * 0.01 * b.mass,
+                    y: (Math.random() - 0.5) * 0.01 * b.mass
+                });
+            }
+
+            // 2. Sleep Logic
+            // Lazy sleeps more
+            let sleepChance = 0.0001;
+            if (b.plugin.personality === 'lazy') sleepChance = 0.0005;
+            if (b.plugin.personality === 'hyper') sleepChance = 0.00001;
+
+            if (b.plugin.emotion === 'normal' && !b.plugin.isFascinated && Math.random() < sleepChance) {
+                b.plugin.emotion = 'sleep';
+                b.plugin.sleepCounter = 600;
+            }
+            if (b.plugin.emotion === 'sleep') {
+                b.plugin.sleepCounter--;
+                if (b.plugin.sleepCounter <= 0) b.plugin.emotion = 'normal';
+            }
+
+            // Action based on emotion
+            if (b.plugin.emotion === 'angry') {
+                if (Math.random() < 0.1) {
+                    if (Math.random() < 0.3) spawnParticle(b.position.x, b.position.y, 'rgba(255,255,255,0.5)');
+                    Composite.allBodies(engine.world).forEach(other => {
+                        if (other !== b && !other.isStatic) {
+                            const d = Vector.sub(other.position, b.position);
+                            const dist = Vector.magnitude(d);
+                            if (dist < 150) {
+                                let force = Vector.normalise(d);
+                                force = Vector.mult(force, 0.015);
+                                Body.applyForce(other, other.position, force);
+                            }
+                        }
+                    });
+                    Body.applyForce(b, b.position, { x: (Math.random() - 0.5) * 0.02, y: (Math.random() - 0.5) * 0.02 });
+                }
+            } else if (b.plugin.emotion === 'sleep') {
+                // Drift
+            } else {
+                // --- Organic Swim Logic ---
+                let targetAngle = 0;
+
+                if (b.plugin.isFascinated && b.plugin.fascinatedTarget) {
+                    // Turn towards glowing object
+                    const d = Vector.sub(b.plugin.fascinatedTarget.position, b.position);
+                    targetAngle = Math.atan2(d.y, d.x);
+                } else {
+                    const t = (timestamp + b.plugin.noiseOffset) * 0.001;
+                    const noiseAngle = noise(t) * Math.PI * 4;
+                    targetAngle = noiseAngle;
+
+                    const speed = Vector.magnitude(b.velocity);
+                    if (speed > 0.1) {
+                        targetAngle = Math.atan2(b.velocity.y, b.velocity.x);
+                    }
+                }
+
+                let diff = targetAngle - b.angle;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+
+                b.torque = diff * 0.0005 * b.mass * (b.plugin.type === 'super_eye' ? 5 : 1);
+
+                const swimCycle = Math.sin(timestamp * 0.005 + b.plugin.noiseOffset);
+                if (swimCycle > 0) {
+                    let kickStrength = 0.0003 * b.mass * (globalScale ** 1.5);
+
+                    // Personality Speed Multipliers
+                    if (b.plugin.personality === 'lazy') kickStrength *= 0.5;
+                    if (b.plugin.personality === 'hyper') kickStrength *= 1.5;
+                    if (b.plugin.personality === 'aggressive') kickStrength *= 1.2;
+
+                    const moodMult = (b.plugin.emotion === 'tired' || b.plugin.emotion === 'scared') ? 0.3 : 1.0;
+
+                    // Hyper jitters direction
+                    if (b.plugin.personality === 'hyper' && Math.random() < 0.1) {
+                        b.angle += (Math.random() - 0.5);
+                    }
+
+                    const force = {
+                        x: Math.cos(b.angle) * kickStrength * moodMult,
+                        y: Math.sin(b.angle) * kickStrength * moodMult
+                    };
+                    Body.applyForce(b, b.position, force);
+                    b.torque += Math.sin(timestamp * 0.02) * 0.0001 * b.mass;
+                }
+            }
+        }
+
+        // Glow Particles
+        if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye') && !b.isStatic) {
+
+            // Super Saiyan Effect
+            if (b.plugin.type === 'super_eye') {
+                // Intense rising particles
+                // Intense rising particles
+                for (let i = 0; i < 3; i++) { // Multiple per frame
+                    const hue = (timestamp * 0.5 + i * 30 + Math.random() * 60) % 360;
+                    spawnRisingParticle(
+                        b.position.x + (Math.random() - 0.5) * 80 * globalScale, // 2x Range
+                        b.position.y + (Math.random() - 0.5) * 80 * globalScale,
+                        `hsl(${hue}, 100%, 70%)` // Rainbow
+                    );
+                }
+            } else {
+                // Normal Glow
+                if (Math.random() < 0.2) {
+                    spawnParticle(
+                        b.position.x + (Math.random() - 0.5) * 20,
+                        b.position.y + (Math.random() - 0.5) * 20,
+                        'rgba(255, 255, 255, 1)'
+                    );
+                }
+            }
+        }
+    });
+
+    Engine.update(engine, 1000 / 60);
+
+    // Draw Boundary
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(boundaryCenter.x, boundaryCenter.y, boundaryRadius, 0, 2 * Math.PI);
+    ctx.stroke();
+
+    // Draw Supply Slots (Visual only)
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    supplySlots.forEach(slot => {
+        // Simple box representation
+        const halfW = (renderWidth / CONFIG.slotCountCols) / 2 - 5;
+        const halfH = (CONFIG.supplyBoxHeight / CONFIG.slotRows) / 2 - 5;
+        ctx.strokeRect(slot.x - halfW, slot.y - halfH, halfW * 2, halfH * 2);
+    });
+
+    updateDrawParticles(ctx);
+    ctx.globalCompositeOperation = 'screen';
+
+    bodies.forEach(b => {
+        if (b.label === 'wall') return;
+
+        ctx.beginPath();
+        const vertices = b.vertices;
+        ctx.moveTo(vertices[0].x, vertices[0].y);
+        for (let j = 1; j < vertices.length; j += 1) {
+            ctx.lineTo(vertices[j].x, vertices[j].y);
+        }
+        ctx.lineTo(vertices[0].x, vertices[0].y);
+        ctx.closePath();
+
+        // Color Logic with Emotion
+        let fill = b.render.fillStyle;
+
+        // Main Fill
+        if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
+            if (b.plugin.type === 'super_eye') {
+                // AURA
+                const hue = (timestamp * 0.2) % 360; // Slow rainbow cycle
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                ctx.shadowBlur = 40;
+                ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+                ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${0.5 + Math.random() * 0.3})`;
+                ctx.lineWidth = 10;
+                ctx.stroke();
+                ctx.restore();
+
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+
+                // RAINBOW BODY Override
+                ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+                ctx.shadowColor = '#FFD700'; // Gold
+                ctx.strokeStyle = `rgba(255, 215, 0, ${0.5 + Math.random() * 0.3})`;
+                ctx.lineWidth = 10;
+                ctx.stroke();
+                ctx.restore();
+
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = 'gold';
+            }
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.fillStyle = fill;
+            ctx.fill();
+            ctx.stroke();
+            ctx.globalCompositeOperation = 'screen';
+        } else {
+            if (b.plugin && b.plugin.type === 'glowing') {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = 'white';
+                ctx.fillStyle = fill;
+            } else {
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = fill;
+            }
+
+            ctx.strokeStyle = b.render.strokeStyle || 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = 2;
+            ctx.fill();
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+
+        // Inner Details (Complementary)
+        if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye')) {
+            if (b.plugin.type !== 'super_eye' && b.plugin.emotion !== 'angry') {
+                ctx.fillStyle = b.plugin.complementary;
+                ctx.globalCompositeOperation = 'source-over';
+                const center = b.position;
+                const scale = 0.5;
+                ctx.beginPath();
+                ctx.moveTo(center.x + (vertices[0].x - center.x) * scale, center.y + (vertices[0].y - center.y) * scale);
+                for (let j = 1; j < vertices.length; j++) {
+                    ctx.lineTo(center.x + (vertices[j].x - center.x) * scale, center.y + (vertices[j].y - center.y) * scale);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.globalCompositeOperation = 'screen';
+            }
+        }
+
+        // Eye Details
+        if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye') && !b.isStatic && b.label !== 'gem_supply') {
+            ctx.globalCompositeOperation = 'source-over';
+
+            // Dynamic Size Calculation
+            const bounds = b.bounds;
+            const w = bounds.max.x - bounds.min.x;
+            const h = bounds.max.y - bounds.min.y;
+            const radius = Math.min(w, h) * 0.25; // 25% of body size (scales with growth)
+
+            const center = b.position;
+
+            if (b.plugin.emotion === 'sleep') {
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 3 * globalScale;
+                ctx.beginPath();
+                ctx.moveTo(center.x - radius, center.y);
+                ctx.lineTo(center.x + radius, center.y);
+                ctx.stroke();
+            } else if (b.plugin.emotion === 'scared') {
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 3 * globalScale;
+                ctx.beginPath();
+                ctx.moveTo(center.x - radius, center.y);
+                ctx.lineTo(center.x + radius, center.y);
+                ctx.stroke();
+            } else if (b.plugin.emotion === 'tired') {
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, radius, Math.PI, 0);
+                ctx.fill();
+                ctx.fillStyle = 'black';
+                ctx.beginPath();
+                ctx.arc(center.x, center.y + radius * 0.3, radius * 0.4, 0, 2 * Math.PI);
+                ctx.fill();
+            } else {
+                let isBlinking = false;
+                if (b.plugin.emotion === 'normal' && !b.plugin.isFascinated) {
+                    const blinkCycle = (timestamp + b.plugin.noiseOffset) % 3000;
+                    if (blinkCycle < 150) isBlinking = true;
+                }
+
+                if (isBlinking) {
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 3 * globalScale;
+                    ctx.beginPath();
+                    ctx.moveTo(center.x - radius, center.y);
+                    ctx.lineTo(center.x + radius, center.y);
+                    ctx.stroke();
+                } else {
+                    // Open Eye
+                    ctx.fillStyle = 'white';
+                    ctx.beginPath();
+                    ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    // Look Target Calculation
+                    let targetLookX = 0, targetLookY = 0;
+
+                    if (b.plugin.isFascinated && b.plugin.fascinatedTarget) {
+                        const d = Vector.sub(b.plugin.fascinatedTarget.position, b.position);
+                        const dist = Vector.magnitude(d);
+                        const lookMag = Math.min(dist, 100) / 100; // Normalize gaze intensity by distance
+                        const vNorm = Vector.normalise(d);
+                        targetLookX = vNorm.x * (radius * 0.6) * lookMag;
+                        targetLookY = vNorm.y * (radius * 0.6) * lookMag;
+                    } else if (b.plugin.emotion === 'angry') {
+                        targetLookX = (Math.random() - 0.5) * radius * 0.5;
+                        targetLookY = (Math.random() - 0.5) * radius * 0.5;
+                    } else {
+                        const vel = b.velocity;
+                        const speed = Vector.magnitude(vel);
+                        if (speed > 0.5) {
+                            const vNorm = Vector.normalise(vel);
+                            targetLookX = vNorm.x * (radius * 0.5);
+                            targetLookY = vNorm.y * (radius * 0.5);
+                        } else {
+                            const lookTime = (timestamp + b.plugin.eyeOffset) / 2000; // Slower idleness
+                            targetLookX = Math.cos(lookTime) * (radius * 0.3);
+                            targetLookY = Math.sin(lookTime) * (radius * 0.3);
+                        }
+                    }
+
+                    // Smooth Pupil Movement (Lerp)
+                    const lerpFactor = 0.15; // Smoothness
+                    b.plugin.lookX = (b.plugin.lookX || 0) * (1 - lerpFactor) + targetLookX * lerpFactor;
+                    b.plugin.lookY = (b.plugin.lookY || 0) * (1 - lerpFactor) + targetLookY * lerpFactor;
+
+                    ctx.fillStyle = (b.plugin.type === 'super_eye') ? '#FF3333' : 'black'; // Red if super eye
+                    ctx.beginPath();
+                    ctx.arc(center.x + b.plugin.lookX, center.y + b.plugin.lookY, radius * 0.4, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    // Sparkle if fascinating
+                    if (b.plugin.isFascinated) {
+                        ctx.fillStyle = 'white';
+                        const sparkleX = center.x + b.plugin.lookX - radius * 0.3;
+                        const sparkleY = center.y + b.plugin.lookY - radius * 0.3;
+
+                        const sparkleSize = radius * 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(sparkleX, sparkleY - sparkleSize);
+                        ctx.lineTo(sparkleX + sparkleSize * 0.3, sparkleY);
+                        ctx.lineTo(sparkleX, sparkleY + sparkleSize);
+                        ctx.lineTo(sparkleX - sparkleSize * 0.3, sparkleY);
+                        ctx.fill();
+
+                        ctx.beginPath();
+                        ctx.moveTo(sparkleX - sparkleSize, sparkleY);
+                        ctx.lineTo(sparkleX, sparkleY - sparkleSize * 0.3);
+                        ctx.lineTo(sparkleX + sparkleSize, sparkleY);
+                        ctx.lineTo(sparkleX, sparkleY + sparkleSize * 0.3);
+                        ctx.fill();
+                    }
+
+                    if (b.plugin.emotion === 'angry') {
+                        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+                        ctx.lineWidth = radius * 0.2;
+                        // ... angry eyebrows ...
+                        ctx.beginPath();
+                        ctx.moveTo(center.x - radius, center.y - radius * 0.5);
+                        ctx.lineTo(center.x + radius, center.y - radius * 0.5);
+                        ctx.stroke();
                     }
                 }
             }
-        });
-
-        // Fascination
-        if (b.plugin.cooldownTimer > 0) {
-            b.plugin.cooldownTimer--;
-            b.plugin.isFascinated = false;
-            b.plugin.fascinatedTarget = null;
-        } else {
-            let canBeFascinated = true;
-            if (nearestGlowing && canBeFascinated) {
-                b.plugin.isFascinated = true;
-                b.plugin.fascinatedTarget = nearestGlowing;
-                b.plugin.fascinatedTimer++;
-
-                let boredomThreshold = 600;
-                if (b.plugin.personality === 'curious') boredomThreshold = 900;
-                if (b.plugin.personality === 'shy') boredomThreshold = 180;
-                if (b.plugin.personality === 'aggressive') boredomThreshold = 120;
-                if (b.plugin.personality === 'lazy') boredomThreshold = 300;
-                if (b.plugin.personality === 'hyper') boredomThreshold = 180;
-
-                if (b.plugin.fascinatedTimer > boredomThreshold) {
-                    b.plugin.isFascinated = false;
-                    b.plugin.fascinatedTarget = null;
-                    b.plugin.cooldownTimer = 900;
-                    b.plugin.fascinatedTimer = 0;
-                    b.plugin.emotion = 'tired';
-                    b.plugin.emotionTimer = 60;
-                    Body.applyForce(b, b.position, { x: (Math.random() - 0.5) * 0.05 * b.mass, y: (Math.random() - 0.5) * 0.05 * b.mass });
-                }
-            } else {
-                b.plugin.isFascinated = false;
-                b.plugin.fascinatedTarget = null;
-                b.plugin.fascinatedTimer = Math.max(0, b.plugin.fascinatedTimer - 1);
-            }
-        }
-
-        // Stuck Check
-        if (b.speed < 0.5) b.plugin.stuckCounter++;
-        else b.plugin.stuckCounter = Math.max(0, b.plugin.stuckCounter - 1);
-
-        if (b.plugin.emotion !== 'angry' && b.plugin.emotion !== 'tired' && b.plugin.emotion !== 'scared' && b.plugin.stuckCounter > 1000) {
-            b.plugin.emotion = 'angry';
-            b.plugin.emotionTimer = 180;
-        }
-
-        // Emotion Timer
-        if (b.plugin.emotion === 'angry') {
-            b.plugin.emotionTimer--;
-            if (b.plugin.emotionTimer <= 0) { b.plugin.emotion = 'tired'; b.plugin.emotionTimer = 120; }
-        } else if (b.plugin.emotion === 'tired') {
-            b.plugin.emotionTimer--;
-            if (b.plugin.emotionTimer <= 0) { b.plugin.emotion = 'normal'; b.plugin.stuckCounter = 0; }
-        } else if (b.plugin.emotion === 'scared') {
-            Body.applyForce(b, b.position, { x: (Math.random() - 0.5) * 0.01 * b.mass, y: (Math.random() - 0.5) * 0.01 * b.mass });
-        }
-
-        // Sleep
-        let sleepChance = 0.0001;
-        if (b.plugin.personality === 'lazy') sleepChance = 0.0005;
-        if (b.plugin.personality === 'hyper') sleepChance = 0.00001;
-        if (b.plugin.emotion === 'normal' && !b.plugin.isFascinated && Math.random() < sleepChance) {
-            b.plugin.emotion = 'sleep';
-            b.plugin.sleepCounter = 600;
-        }
-        if (b.plugin.emotion === 'sleep') {
-            b.plugin.sleepCounter--;
-            if (b.plugin.sleepCounter <= 0) b.plugin.emotion = 'normal';
-        }
-
-        // Action
-        if (b.plugin.emotion === 'angry') {
-            if (Math.random() < 0.1) {
-                if (Math.random() < 0.3) spawnParticle(b.position.x, b.position.y, 'rgba(255,255,255,0.5)');
-                Body.applyForce(b, b.position, { x: (Math.random() - 0.5) * 0.02, y: (Math.random() - 0.5) * 0.02 });
-            }
-        } else if (b.plugin.emotion === 'sleep') {
-            // Do nothing
-        } else {
-            // Swim
-            let targetAngle = 0;
-            if (b.plugin.isFascinated && b.plugin.fascinatedTarget) {
-                const d = Vector.sub(b.plugin.fascinatedTarget.position, b.position);
-                const angleToTarget = Math.atan2(d.y, d.x);
-                targetAngle = angleToTarget;
-                if (Vector.magnitude(d) > 80 * globalScale) {
-                    Body.applyForce(b, b.position, { x: Math.cos(targetAngle) * 0.0005 * b.mass, y: Math.sin(targetAngle) * 0.0005 * b.mass });
-                }
-            } else {
-                targetAngle = noise(timestamp * 0.001 + b.plugin.noiseOffset) * Math.PI * 2;
-            }
-
-            const diff = targetAngle - b.angle;
-            b.torque = diff * 0.0005 * b.mass * (b.plugin.type === 'super_eye' ? 5 : 1);
-
-            const swimCycle = Math.sin(timestamp * 0.005 + b.plugin.noiseOffset);
-            if (swimCycle > 0) {
-                let kickStrength = 0.0003 * b.mass * (globalScale ** 1.5);
-                if (b.plugin.personality === 'lazy') kickStrength *= 0.5;
-                if (b.plugin.personality === 'hyper') kickStrength *= 1.5;
-                Body.applyForce(b, b.position, { x: Math.cos(b.angle) * kickStrength, y: Math.sin(b.angle) * kickStrength });
-            }
+            ctx.globalCompositeOperation = 'screen';
         }
     });
-
-    // --- FIX: Use Render Controller ---
-    Render.bodies(renderController, bodies, ctx);
-    // ---------------------------------
-
-    // Overlay
-    bodies.forEach(b => {
-        if (!b.render.visible) return;
-        if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye')) {
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = b.render.fillStyle;
-            ctx.beginPath();
-            ctx.arc(b.position.x, b.position.y, 20 * globalScale, 0, Math.PI * 2);
-            ctx.fillStyle = b.render.fillStyle;
-            ctx.globalAlpha = 0.5;
-            ctx.fill();
-            ctx.globalAlpha = 1.0;
-            ctx.shadowBlur = 0;
-            if (Math.random() < 0.1) spawnParticle(b.position.x + (Math.random() - 0.5) * 20, b.position.y + (Math.random() - 0.5) * 20, 'white');
-            if (b.plugin.type === 'super_eye' && Math.random() < 0.3) spawnRisingParticle(b.position.x, b.position.y, `hsl(${timestamp * 0.1 % 360}, 100%, 80%)`);
-        }
-        if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
-            ctx.save();
-            ctx.translate(b.position.x, b.position.y);
-            ctx.rotate(b.angle);
-            ctx.fillStyle = 'white';
-            ctx.beginPath();
-            ctx.arc(10 * globalScale, 0, 8 * globalScale, 0, Math.PI * 2);
-            ctx.arc(-10 * globalScale, 0, 8 * globalScale, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = 'black';
-            let pupilX = 0;
-            let pupilScale = 1.0;
-            if (b.plugin.emotion === 'sleep') { pupilScale = 0.1; }
-            else {
-                b.plugin.blinkTimer--;
-                if (b.plugin.blinkTimer <= 0) b.plugin.blinkTimer = Math.random() * 200 + 100;
-                if (b.plugin.blinkTimer < 10) pupilScale = 0.1;
-            }
-            if (b.plugin.emotion === 'angry') { ctx.fillStyle = 'red'; pupilScale *= 0.8; }
-            if (b.plugin.emotion === 'scared') { pupilScale *= 0.5; pupilX = (Math.random() - 0.5) * 5; }
-            if (b.plugin.isFascinated) pupilScale *= 1.3;
-
-            ctx.beginPath();
-            ctx.arc(10 * globalScale + pupilX, 0, 4 * globalScale * pupilScale, 0, Math.PI * 2);
-            ctx.arc(-10 * globalScale + pupilX, 0, 4 * globalScale * pupilScale, 0, Math.PI * 2);
-            ctx.fill();
-            if (b.plugin.emotion === 'sleep') { ctx.fillStyle = 'white'; ctx.font = '16px monospace'; ctx.fillText('Zzz', 0, -20); }
-            if (b.plugin.isFascinated) { ctx.fillStyle = 'yellow'; ctx.font = 'bold 20px monospace'; ctx.fillText('!', 0, -25); }
-            if (b.plugin.personality === 'curious' && Math.random() < 0.01) { ctx.fillStyle = 'cyan'; ctx.font = 'bold 16px monospace'; ctx.fillText('?', 0, -25); }
-            ctx.restore();
-        }
-    });
-    updateDrawParticles(ctx);
 }
 
 function drawAudioVisualizer(timestamp, ctx) {
@@ -909,26 +1184,40 @@ function render() {
     const timestamp = Date.now();
     const ctx = canvas.getContext('2d');
 
+    // Heartbeat: Small Green Square to prove render loop is alive
+    ctx.fillStyle = 'lime';
+    ctx.fillRect(0, 0, 5, 5);
+
     ctx.clearRect(0, 0, renderWidth, renderHeight);
 
-    // Explicit error handling per mode (Console only)
+    // Explicit error handling per mode
     if (currentMode === 'physics') {
         try {
             drawPhysicsMode(timestamp, ctx);
         } catch (e) {
-            console.error("Phys Crash:", e);
+            ctx.fillStyle = 'red';
+            ctx.font = '16px monospace';
+            ctx.fillText("Phys Crash: " + e.message, 20, 100);
+            ctx.fillText(e.stack ? e.stack.substring(0, 50) : "No Stack", 20, 120);
+            console.error(e);
         }
     } else if (currentMode === 'audio') {
         try {
             drawAudioVisualizer(timestamp, ctx);
         } catch (e) {
-            console.error("Audio Crash:", e);
+            ctx.fillStyle = 'red';
+            ctx.font = '16px monospace';
+            ctx.fillText("Audio Crash: " + e.message, 20, 100);
+            console.error(e);
         }
     } else if (currentMode === 'fractal') {
         try {
             drawFractal(timestamp, ctx);
         } catch (e) {
-            console.error("Frac Crash:", e);
+            ctx.fillStyle = 'red';
+            ctx.font = '16px monospace';
+            ctx.fillText("Frac Crash: " + e.message, 20, 100);
+            console.error(e);
         }
     }
 
