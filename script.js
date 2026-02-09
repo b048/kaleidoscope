@@ -443,15 +443,12 @@ function initPhysicsWorld() {
     } else if (physicsSubMode === 'float') {
         gravityScale = 0;
         airFriction = 0; // Zero friction
-        rotationSpeedScale = 0; // No auto rotate (or maybe just standard?) -> User said "Zero air res, Restitution 1"
-        isAutoRotating = false; // Disable gravity rotation?? User said "Anti-gravity/Floating".
-        // Let's assume Auto-Rotate stops or gravity is just 0. 
-        // User said: "In floating mode: Air friction 0, Bounce 1, Count Half, Initial Energy"
+        rotationSpeedScale = 0; // Stop rotation
+        isAutoRotating = false; // Disable gravity rotation
         wallRestitution = 1.0;
         gemRestitution = 1.0;
         CONFIG.initialBeadCount = calculateInitialCount(0.25); // Half of normal
     } else if (physicsSubMode === 'eye') {
-        // Like gravity but force eyes
         gravityScale = 1.0;
         airFriction = 0.05;
         rotationSpeedScale = 1.0;
@@ -461,18 +458,31 @@ function initPhysicsWorld() {
         CONFIG.initialBeadCount = calculateInitialCount(0.5);
     }
 
-    // Update Sliders if they exist
-    const updateSlider = (id, val) => {
+    // Update Sliders/Checkbox to match internal state
+    const updateUI = (id, val, isCheckbox = false) => {
         const el = document.getElementById(id);
-        if (el) { el.value = val; el.dispatchEvent(new Event('input')); }
+        if (el) {
+            if (isCheckbox) {
+                el.checked = val;
+                el.dispatchEvent(new Event('change')); // Trigger listener
+            } else {
+                el.value = val;
+                el.dispatchEvent(new Event('input')); // Trigger listener
+            }
+        }
     }
-    // Note: dispatchEvent('input') will trigger the listeners which set the variables again.
-    // So we might be double-setting, but that ensures UI sync.
-    updateSlider('gravityControl', gravityScale);
-    updateSlider('frictionControl', airFriction);
-    updateSlider('restitutionControl', wallRestitution);
-    updateSlider('gemRestitutionControl', gemRestitution);
-    // updateSlider('rotateSpeedControl', rotationSpeedScale); // Maybe keep user preference? User implied specific settings for mode.
+
+    updateUI('gravityControl', gravityScale);
+    updateSlider('frictionControl', airFriction); // Use helper or the new updateUI?
+    // Let's unify.
+    updateUI('frictionControl', airFriction);
+    updateUI('restitutionControl', wallRestitution);
+    updateUI('gemRestitutionControl', gemRestitution);
+    updateUI('autoRotateControl', isAutoRotating, true);
+
+    // Explicitly set global vars again just in case listeners are weird
+    // (Listeners update globals, so dispatchEvent is enough, but purely being safe)
+    // gravityScale, airFriction etc are updated by listeners.
 
     // Spawn Objects
     let eyeSpawned = false;
