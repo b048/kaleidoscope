@@ -382,7 +382,7 @@ Events.on(engine, 'collisionStart', (event) => {
             if (eaten.plugin && eaten.plugin.type === 'glowing') {
                 eater.plugin.emotion = 'surprised';
                 eater.plugin.emotionTimer = 120; // 2 seconds surprise
-                eater.plugin.glowTimer = 3600; // 1 minute glow
+                eater.plugin.glowTimer = 600; // 10 seconds glow
             }
 
             spawnParticle(eaten.position.x, eaten.position.y, eaten.plugin.color);
@@ -452,13 +452,69 @@ if (!('ontouchstart' in window)) {
     });
 }
 
-// Dragging
+// Dragging & Eraser
 const mouse = Mouse.create(canvas);
 const mouseConstraint = MouseConstraint.create(engine, {
     mouse: mouse,
     constraint: { stiffness: 0.2, render: { visible: false } }
 });
+
+// Eraser State
+let isEraserActive = false;
+window.toggleEraser = function () {
+    isEraserActive = !isEraserActive;
+    const btn = document.getElementById('btn-eraser');
+    if (btn) {
+        btn.textContent = isEraserActive ? "Eraser: ON" : "Eraser: OFF";
+        btn.style.background = isEraserActive ? "rgba(255, 0, 0, 0.5)" : "rgba(0,0,0,0.5)";
+    }
+};
+
+// Eraser Logic Function
+function handleEraser(x, y) {
+    if (!isEraserActive) return;
+
+    // Query bodies at cursor
+    const bodies = Composite.allBodies(engine.world);
+    const affected = Matter.Query.point(bodies, { x: x, y: y });
+
+    affected.forEach(body => {
+        if (body.isStatic || body.label === 'wall') return;
+
+        const isEye = body.plugin && (body.plugin.type === 'eye' || body.plugin.type === 'super_eye');
+
+        if (isEye) {
+            // EYES: Scared & Flee
+            body.plugin.emotion = 'scared';
+            body.plugin.emotionTimer = 60; // 1 sec scare
+
+            // Flee Force
+            const forceDir = Vector.sub(body.position, { x: x, y: y });
+            const dist = Vector.magnitude(forceDir);
+            if (dist > 0) {
+                // Strong flee force
+                const force = Vector.mult(Vector.normalise(forceDir), 0.05 * body.mass);
+                Body.applyForce(body, body.position, force);
+            }
+
+        } else {
+            // NORMAL GEMS: Delete
+            spawnParticle(body.position.x, body.position.y, body.render.fillStyle);
+            Composite.remove(engine.world, body);
+        }
+    });
+}
+
+// Intercept Mouse events for Eraser
+Events.on(mouseConstraint, 'mousemove', (event) => {
+    if (isEraserActive) {
+        handleEraser(event.mouse.position.x, event.mouse.position.y);
+    }
+});
+
 Events.on(mouseConstraint, 'startdrag', (event) => {
+    if (isEraserActive) return; // Disable drag if eraser is on
+
     if (event.body.label === 'gem_supply') {
         Matter.Body.setStatic(event.body, false);
         event.body.label = 'gem_transition';
