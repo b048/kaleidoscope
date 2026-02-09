@@ -13,7 +13,7 @@ const Engine = Matter.Engine,
 
 // Configuration
 const CONFIG = {
-    initialBeadCount: 48,
+    initialBeadCount: 32,
     wallThickness: 100,
     gemColors: [
         'rgba(255, 0, 0, 0.7)',    // Red
@@ -409,6 +409,14 @@ Events.on(engine, 'collisionStart', (event) => {
 });
 
 // Initial Objects
+// Calculate count to fill ~50% of the cylinder area
+const cylinderArea = Math.PI * boundaryRadius * boundaryRadius;
+const avgGemRadius = 20; // Average baseSize (15-25)
+const avgGemArea = Math.PI * avgGemRadius * avgGemRadius;
+// Fill 50% of total area
+const targetCount = Math.floor((cylinderArea * 0.5) / avgGemArea);
+CONFIG.initialBeadCount = Math.min(200, Math.max(10, targetCount)); // Clamp between 10 and 200
+
 for (let i = 0; i < CONFIG.initialBeadCount; i++) {
     const gem = createGem(boundaryCenter.x + Common.random(-50, 50), boundaryCenter.y + Common.random(-50, 50), false);
     Composite.add(engine.world, gem);
