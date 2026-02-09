@@ -473,7 +473,7 @@ function initPhysicsWorld() {
     }
 
     updateUI('gravityControl', gravityScale);
-    updateSlider('frictionControl', airFriction); // Use helper or the new updateUI?
+    updateUI('frictionControl', airFriction);
     // Let's unify.
     updateUI('frictionControl', airFriction);
     updateUI('restitutionControl', wallRestitution);

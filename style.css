@@ -97,8 +97,11 @@ canvas {
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 24px;
-    border-radius: 24px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    color: #fff;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    overflow: hidden;
 }
 
 /* Physics Sub-modes container */
@@ -116,14 +119,6 @@ canvas {
 
 .submode-btn:hover {
     filter: brightness(1.2);
-}
-
-color: #fff;
-font-family: 'Segoe UI',
-system-ui,
-sans-serif;
-transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-overflow: hidden;
 }
 
 .control-header {
