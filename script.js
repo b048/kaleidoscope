@@ -643,6 +643,11 @@ function drawPhysicsMode(timestamp, ctx) {
             }
 
 
+            // Glow Timer Logic
+            if (b.plugin.glowTimer > 0) {
+                b.plugin.glowTimer--;
+            }
+
             // 1. Stuck Check -> Angular
             const speed = b.speed;
             if (speed < 0.5) {
@@ -658,7 +663,10 @@ function drawPhysicsMode(timestamp, ctx) {
             }
 
             // State Counters
-            if (b.plugin.emotion === 'angry') {
+            if (b.plugin.emotion === 'surprised') {
+                b.plugin.emotionTimer--;
+                if (b.plugin.emotionTimer <= 0) b.plugin.emotion = 'normal';
+            } else if (b.plugin.emotion === 'angry') {
                 b.plugin.emotionTimer--;
                 if (b.plugin.emotionTimer <= 0) {
                     b.plugin.emotion = 'tired';
@@ -693,7 +701,10 @@ function drawPhysicsMode(timestamp, ctx) {
             }
 
             // Action based on emotion
-            if (b.plugin.emotion === 'angry') {
+            if (b.plugin.emotion === 'sleep') {
+                // DO NOTHING (Strict Sleep)
+                b.angularVelocity *= 0.9; // Slow rotation logic
+            } else if (b.plugin.emotion === 'angry') {
                 if (Math.random() < 0.1) {
                     if (Math.random() < 0.3) spawnParticle(b.position.x, b.position.y, 'rgba(255,255,255,0.5)');
                     Composite.allBodies(engine.world).forEach(other => {
@@ -709,8 +720,6 @@ function drawPhysicsMode(timestamp, ctx) {
                     });
                     Body.applyForce(b, b.position, { x: (Math.random() - 0.5) * 0.02, y: (Math.random() - 0.5) * 0.02 });
                 }
-            } else if (b.plugin.emotion === 'sleep') {
-                // Drift
             } else {
                 // --- Organic Swim Logic ---
                 let targetAngle = 0;
@@ -738,7 +747,8 @@ function drawPhysicsMode(timestamp, ctx) {
 
                 const swimCycle = Math.sin(timestamp * 0.005 + b.plugin.noiseOffset);
                 if (swimCycle > 0) {
-                    let kickStrength = 0.0003 * b.mass * (globalScale ** 1.5);
+                    // Increased kick strength for freer movement (User Request)
+                    let kickStrength = 0.0006 * b.mass * (globalScale ** 1.5); // Doubled from 0.0003
 
                     // Personality Speed Multipliers
                     if (b.plugin.personality === 'lazy') kickStrength *= 0.5;
@@ -762,12 +772,11 @@ function drawPhysicsMode(timestamp, ctx) {
             }
         }
 
-        // Glow Particles
-        if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye') && !b.isStatic) {
+        // Glow Particles & Power-up Aura
+        if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0) && !b.isStatic) {
 
-            // Super Saiyan Effect
-            if (b.plugin.type === 'super_eye') {
-                // Intense rising particles
+            // Super Saiyan or Power-up Effect
+            if (b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0) {
                 // Intense rising particles
                 for (let i = 0; i < 3; i++) { // Multiple per frame
                     const hue = (timestamp * 0.5 + i * 30 + Math.random() * 60) % 360;
@@ -829,7 +838,7 @@ function drawPhysicsMode(timestamp, ctx) {
 
         // Main Fill
         if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
-            if (b.plugin.type === 'super_eye') {
+            if (b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0) {
                 // AURA
                 const hue = (timestamp * 0.2) % 360; // Slow rainbow cycle
                 ctx.save();
@@ -934,6 +943,23 @@ function drawPhysicsMode(timestamp, ctx) {
                 ctx.beginPath();
                 ctx.arc(center.x, center.y + radius * 0.3, radius * 0.4, 0, 2 * Math.PI);
                 ctx.fill();
+            } else if (b.plugin.emotion === 'surprised') {
+                // Wide Open Eyes
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, radius * 1.8, 0, 2 * Math.PI); // Extra big
+                ctx.fill();
+
+                // Tiny pupils
+                ctx.fillStyle = 'black';
+                ctx.beginPath();
+                ctx.arc(center.x, center.y, radius * 0.2, 0, 2 * Math.PI);
+                ctx.fill();
+
+                ctx.fillStyle = '#FF4500';
+                ctx.font = `bold ${20 * globalScale}px monospace`;
+                ctx.textAlign = 'center';
+                ctx.fillText('!?', center.x, center.y - 30 * globalScale);
             } else {
                 let isBlinking = false;
                 if (b.plugin.emotion === 'normal' && !b.plugin.isFascinated) {
