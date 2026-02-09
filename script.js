@@ -33,7 +33,14 @@ const CONFIG = {
 let currentMode = 'physics'; // 'physics', 'audio', 'fractal'
 let isSensorActive = false;
 let isAutoRotating = true;
-let autoRotateAngle = 0;
+// Kaleido Rotation State
+const kaleidoState = {
+    angle: 0,
+    targetAngle: 0,
+    isTurning: false,
+    timer: 0,
+    lastTime: 0
+};
 
 // --- Ends Global State ---
 
@@ -605,21 +612,54 @@ function drawPhysicsMode(timestamp, ctx) {
     // 0. Supply Logic
     checkSupplyAndCleanup();
 
-    // Auto Rotation Logic
+    // Auto Rotation Logic (Step-wise / "Kakukaku")
     if (isAutoRotating) {
-        const speedVar = (Math.sin(timestamp * 0.001) * 0.005 + 0.01) * rotationSpeedScale;
-        autoRotateAngle += speedVar;
-        const pulse = 1.0 + Math.sin(timestamp * 0.002) * 0.5;
-        engine.world.gravity.x = Math.sin(autoRotateAngle) * gravityScale * pulse;
-        engine.world.gravity.y = Math.cos(autoRotateAngle) * gravityScale * pulse;
+        // Init time
+        if (!kaleidoState.lastTime) kaleidoState.lastTime = timestamp;
+        const dt = timestamp - kaleidoState.lastTime;
+        kaleidoState.lastTime = timestamp;
 
-        // Turbulence (Gated by Gravity Scale)
-        if (gravityScale > 0.1 && Math.random() < 0.05) {
+        if (rotationSpeedScale > 0) {
+            if (kaleidoState.isTurning) {
+                // TURN PHASE
+                const turnSpeed = 0.002 * dt * (1 + rotationSpeedScale * 0.5); // Turn speed varies slightly with slider
+
+                // Move towards target
+                if (kaleidoState.angle < kaleidoState.targetAngle) {
+                    kaleidoState.angle += turnSpeed;
+                    if (kaleidoState.angle >= kaleidoState.targetAngle) {
+                        kaleidoState.angle = kaleidoState.targetAngle;
+                        kaleidoState.isTurning = false;
+                        kaleidoState.timer = 0; // Reset rest timer
+                    }
+                }
+            } else {
+                // REST PHASE
+                kaleidoState.timer += dt;
+
+                // Rest duration decreases as speed increases
+                // Scale 0.1 -> 5000ms, Scale 5.0 -> 200ms
+                const restDuration = 3000 / (rotationSpeedScale * 1.5 + 0.1);
+
+                if (kaleidoState.timer > restDuration) {
+                    kaleidoState.isTurning = true;
+                    kaleidoState.targetAngle += Math.PI / 3; // Turn 60 degrees
+                }
+            }
+        }
+
+        const pulse = 1.0 + Math.sin(timestamp * 0.002) * 0.1; // Reduced pulse
+        engine.world.gravity.x = Math.sin(kaleidoState.angle) * gravityScale * pulse;
+        engine.world.gravity.y = Math.cos(kaleidoState.angle) * gravityScale * pulse;
+
+        // Turbulence (Gated by Gravity Scale) - Only during turn? Or always?
+        // Let's keep it but maybe enhance it during turn to shake things up
+        if (kaleidoState.isTurning && gravityScale > 0.1 && Math.random() < 0.1) {
             Composite.allBodies(engine.world).forEach(b => {
                 if (!b.isStatic && Math.random() < 0.3) {
                     Body.applyForce(b, b.position, {
-                        x: (Math.random() - 0.5) * 0.01 * b.mass * gravityScale,
-                        y: (Math.random() - 0.5) * 0.01 * b.mass * gravityScale
+                        x: (Math.random() - 0.5) * 0.02 * b.mass * gravityScale,
+                        y: (Math.random() - 0.5) * 0.02 * b.mass * gravityScale
                     });
                 }
             });
