@@ -13,7 +13,7 @@ const Engine = Matter.Engine,
 
 // Configuration
 const CONFIG = {
-    initialBeadCount: 24,
+    initialBeadCount: 48,
     wallThickness: 100,
     gemColors: [
         'rgba(255, 0, 0, 0.7)',    // Red
@@ -114,6 +114,7 @@ let gravityScale = 1;
 let airFriction = 0.05;
 let wallRestitution = 0.6;
 let gemRestitution = 0.6;
+let rotationSpeedScale = 1.0;
 
 let globalScale = 1.0;
 
@@ -123,13 +124,14 @@ const bindSlider = (id, targetVar, displayId, callback) => {
     if (el) {
         el.addEventListener('input', (e) => {
             const val = parseFloat(e.target.value);
-            if (displayId) document.getElementById(displayId).textContent = val;
+            if (displayId) document.getElementById(displayId).textContent = val.toFixed(1);
             if (callback) callback(val);
         });
     }
 };
 
 bindSlider('gravityControl', null, 'val-gravity', (v) => gravityScale = v);
+bindSlider('rotateSpeedControl', null, 'val-rotate-speed', (v) => rotationSpeedScale = v);
 bindSlider('scaleControl', null, 'val-scale', (v) => {
     const ratio = v / globalScale;
     globalScale = v;
@@ -605,7 +607,7 @@ function drawPhysicsMode(timestamp, ctx) {
 
     // Auto Rotation Logic
     if (isAutoRotating) {
-        const speedVar = Math.sin(timestamp * 0.001) * 0.005 + 0.01;
+        const speedVar = (Math.sin(timestamp * 0.001) * 0.005 + 0.01) * rotationSpeedScale;
         autoRotateAngle += speedVar;
         const pulse = 1.0 + Math.sin(timestamp * 0.002) * 0.5;
         engine.world.gravity.x = Math.sin(autoRotateAngle) * gravityScale * pulse;
