@@ -782,9 +782,13 @@ function drawPhysicsMode(timestamp, ctx) {
                     b.plugin.stuckCounter = 0;
                 }
             } else if (b.plugin.emotion === 'scared') {
+                b.plugin.emotionTimer--;
+                if (b.plugin.emotionTimer <= 0) b.plugin.emotion = 'normal';
+
+                const forceMag = 0.01 * b.mass;
                 Body.applyForce(b, b.position, {
-                    x: (Math.random() - 0.5) * 0.01 * b.mass,
-                    y: (Math.random() - 0.5) * 0.01 * b.mass
+                    x: (Math.random() - 0.5) * forceMag,
+                    y: (Math.random() - 0.5) * forceMag
                 });
             }
 
@@ -1028,7 +1032,7 @@ function drawPhysicsMode(timestamp, ctx) {
                 ctx.stroke();
             } else if (b.plugin.emotion === 'scared') {
                 // Scared Face: Cyan tint, SINGLE trembling pupil (Cyclops)
-                ctx.fillStyle = '#E0FFFF'; // Light Cyan background
+                ctx.fillStyle = '#AFEEEE'; // PaleTurquoise (Darker than LightCyan)
                 ctx.beginPath();
                 ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
                 ctx.fill();
@@ -1040,12 +1044,6 @@ function drawPhysicsMode(timestamp, ctx) {
                 ctx.fillStyle = 'black';
                 ctx.beginPath();
                 ctx.arc(center.x + trembleX, center.y + trembleY, radius * 0.4, 0, 2 * Math.PI); // Big dilated pupil
-                ctx.fill();
-
-                // Sweat Drop (Optional detail)
-                ctx.fillStyle = 'rgba(0, 100, 255, 0.5)';
-                ctx.beginPath();
-                ctx.arc(center.x + radius, center.y - radius, radius * 0.3, 0, 2 * Math.PI);
                 ctx.fill();
             } else if (b.plugin.emotion === 'tired') {
                 ctx.fillStyle = 'white';
