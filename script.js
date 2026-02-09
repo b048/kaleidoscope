@@ -13,7 +13,7 @@ const Engine = Matter.Engine,
 
 // Configuration
 const CONFIG = {
-    initialBeadCount: 15,
+    initialBeadCount: 64,
     wallThickness: 100,
     gemColors: [
         'rgba(255, 0, 0, 0.7)',    // Red
@@ -207,7 +207,12 @@ function createWalls() {
         walls.push(Bodies.rectangle(x, y, segmentWidth * 1.2, wallThickness, {
             isStatic: true,
             angle: angle + Math.PI / 2,
-            render: { visible: false },
+            render: {
+                visible: true, // Show collision detection (User Request)
+                fillStyle: 'rgba(255, 255, 255, 0.1)',
+                strokeStyle: 'rgba(255, 255, 255, 0.3)',
+                lineWidth: 1
+            },
             label: 'wall',
             friction: 0.5,
             restitution: wallRestitution
@@ -231,7 +236,8 @@ for (let row = 0; row < CONFIG.slotRows; row++) {
 
 // Generate Gemstones
 function createGem(x, y, isStaticInBox = false) {
-    const baseSize = 15 + Math.random() * 10;
+    // Randomize size more (User Request)
+    const baseSize = 10 + Math.random() * 30; // 10 to 40 range
     let size = baseSize * (isStaticInBox ? 1.0 : globalScale);
 
     const sides = Math.floor(3 + Math.random() * 5);
@@ -1270,7 +1276,8 @@ function drawFractal(timestamp, ctx) {
     let maxIter = mandelbrotState.baseMaxIter;
     if (fractalType === 'mandelbrot') {
         const zoomLevel = Math.log10(mandelbrotState.scale);
-        maxIter = Math.min(300, Math.floor(64 + 20 * zoomLevel));
+        // Significantly increase max iterations based on zoom to prevent black blobs at e6+
+        maxIter = Math.min(2000, Math.floor(100 + 80 * zoomLevel));
     } else {
         maxIter = 128;
     }
@@ -1280,6 +1287,18 @@ function drawFractal(timestamp, ctx) {
 
     for (let py = 0; py < h; py++) {
         for (let px = 0; px < w; px++) {
+            // --- FOVEATED RENDERING OPTIMIZATION ---
+            // Calculate distance from center (0.0 to 1.0 approx at edges)
+            const dx = px - w / 2;
+            const dy = py - h / 2;
+            const distSq = (dx * dx + dy * dy);
+            const maxDistSq = (w * w + h * h) * 0.25;
+            const distRatio = distSq / maxDistSq;
+
+            // Reduce iterations at edges to save performance (User Request: "High quality center, light outer")
+            // Center = 100% maxIter, Edge = ~20% maxIter
+            const currentPixelMaxIter = Math.floor(maxIter * (1 - 0.8 * distRatio));
+
             const x0 = centerX + (px - w / 2) * scale / h;
             const y0 = centerY + (py - h / 2) * scale / h;
             let x = (fractalType === 'mandelbrot') ? 0 : x0;
@@ -1289,20 +1308,31 @@ function drawFractal(timestamp, ctx) {
             const mcx = x0;
             const mcy = y0;
             let iter = 0;
-            while (x * x + y * y <= 4 && iter < maxIter) {
+
+            while (x * x + y * y <= 4 && iter < currentPixelMaxIter) {
                 const xtemp = x * x - y * y + ((fractalType === 'mandelbrot') ? mcx : jcx);
                 y = 2 * x * y + ((fractalType === 'mandelbrot') ? mcy : jcy);
                 x = xtemp;
                 iter++;
             }
             const pixelIndex = (py * w + px) * 4;
-            if (iter === maxIter) {
-                data[pixelIndex] = 0;
-                data[pixelIndex + 1] = 0;
-                data[pixelIndex + 2] = 0;
+
+            if (iter >= currentPixelMaxIter) {
+                // --- INTERIOR COLORING (Trapped Orbit) ---
+                // User Request: "Don't be boring darkness"
+                // Use final z (x,y) to create a pattern
+                const angle = Math.atan2(y, x);
+                const dist = Math.sqrt(x * x + y * y);
+                const colorShift = timestamp * 0.001;
+
+                // Psychedelic interior pattern
+                data[pixelIndex] = Math.sin(angle * 10 + dist * 20 + colorShift) * 127 + 128;
+                data[pixelIndex + 1] = Math.sin(angle * 13 + dist * 15 + colorShift + 2) * 127 + 128;
+                data[pixelIndex + 2] = Math.sin(angle * 7 + dist * 30 + colorShift + 4) * 127 + 128;
                 data[pixelIndex + 3] = 255;
             } else {
-                const colorShift = timestamp * 0.05;
+                // Much slower color cycling (User Request: "Eyes hurt")
+                const colorShift = timestamp * 0.002;
                 data[pixelIndex] = Math.sin(iter * 0.2 + colorShift) * 127 + 128; // R
                 data[pixelIndex + 1] = Math.sin(iter * 0.2 + 2 + colorShift) * 127 + 128; // G
                 data[pixelIndex + 2] = Math.sin(iter * 0.2 + 4 + colorShift) * 127 + 128; // B
