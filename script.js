@@ -232,10 +232,31 @@ function createWalls() {
 Composite.add(engine.world, createWalls());
 
 // Supply Slots
-const supplySlots = [];
+// Supply Slots (Dynamic)
+let supplySlots = [];
 const slotBaseY = renderHeight - CONFIG.supplyBoxHeight + 20;
-const slotWidth = renderWidth / CONFIG.slotCountCols;
-const slotRowHeight = CONFIG.supplyBoxHeight / CONFIG.slotRows;
+
+function updateSupplySlots() {
+    supplySlots = [];
+    // Base: Rows 2, Cols 6 (12 slots)
+    const baseCols = CONFIG.slotCountCols; // 6
+    const newCols = Math.max(3, Math.floor(baseCols * densityScale));
+
+    const slotWidth = renderWidth / newCols;
+    const slotRowHeight = CONFIG.supplyBoxHeight / CONFIG.slotRows; // 2 rows
+
+    const rows = (densityScale > 1.5) ? 3 : CONFIG.slotRows;
+
+    for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < newCols; col++) {
+            supplySlots.push({
+                x: (col + 0.5) * slotWidth,
+                y: slotBaseY + (row * slotRowHeight),
+                occupiedBy: null
+            });
+        }
+    }
+}
 
 // Supply Slots (Dynamic)
 // Replaced static loop with updateSupplySlots() triggered by init or slider.
