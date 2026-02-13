@@ -241,6 +241,7 @@ Composite.add(engine.world, createWalls());
 // Supply Slots (Dynamic)
 let supplySlots = [];
 const slotBaseY = renderHeight - CONFIG.supplyBoxHeight + 20;
+let initialSupplyFilled = false; // 初期生成かどうかを管理
 
 function updateSupplySlots() {
     // Clear existing supply bodies to be safe (though fixed now)
@@ -570,11 +571,19 @@ function checkSupplyAndCleanup() {
             }
         }
         if (!slot.occupiedBy) {
-            const newGem = createGem(slot.x, slot.y, true);
+            // 初回フィル時は目玉などのスペシャルを生成しない
+            const newGem = initialSupplyFilled
+                ? createGem(slot.x, slot.y, true, true)
+                : createGem(slot.x, slot.y, true, false);
             Composite.add(engine.world, newGem);
             slot.occupiedBy = newGem;
         }
     });
+
+    // 一度でも全スロットを埋め始めたら「初期生成完了」とみなす
+    if (!initialSupplyFilled) {
+        initialSupplyFilled = true;
+    }
 }
 
 // Collision Event
@@ -715,10 +724,14 @@ function initPhysicsWorld() {
     // (Listeners update globals, so dispatchEvent is enough, but purely being safe)
     // gravityScale, airFriction etc are updated by listeners.
 
-    // Spawn Objects
-    let eyeSpawned = false;
+    // Spawn Objects（初期生成では目玉を出さない）
     for (let i = 0; i < CONFIG.initialBeadCount; i++) {
-        const gem = createGem(boundaryCenter.x + Common.random(-50, 50), boundaryCenter.y + Common.random(-50, 50), false);
+        const gem = createGem(
+            boundaryCenter.x + Common.random(-50, 50),
+            boundaryCenter.y + Common.random(-50, 50),
+            false,
+            false // 初期生成時は special（目玉など）を無効化
+        );
 
         // Eye Mode removed - No special enforcement needed for Gyro
 
@@ -944,12 +957,12 @@ window.toggleEraser = function () {
             btn.style.background = "cyan";
             btn.style.color = "black";
             btn.style.boxShadow = "0 0 15px cyan";
-            btn.textContent = "Eraser Active";
+            btn.textContent = "消しゴム";
         } else {
             btn.style.background = "rgba(0,0,0,0.3)";
             btn.style.color = "cyan";
             btn.style.boxShadow = "none";
-            btn.textContent = "Eraser Mode";
+            btn.textContent = "消しゴム";
         }
     }
 
