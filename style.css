@@ -89,8 +89,7 @@ canvas {
     left: 10px;
     background: rgba(0, 0, 0, 0.9);
     /* Almost solid black */
-    color: #55ff55;
-    /* Lighter green for better visibility */
+    color: #ffffff;
     padding: 8px;
     border-radius: 8px;
     font-family: monospace;

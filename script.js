@@ -1610,7 +1610,7 @@ function render() {
 
     if (debugState.visible) {
         // Colors
-        const colAlpha = '#55ff55'; // Updated green
+        const colAlpha = '#ffffff'; // White for better visibility (was Green)
         const colBeta = '#ffff00';
         const colGamma = '#ff00ff';
         const colGX = '#ff4444';
@@ -1715,10 +1715,13 @@ function render() {
             // Scale to fit -180 to 360 comfortably in 60px
             // Range 540. 60/540 ~ 0.11. Use 0.08 to be safe.
             // Center shift: we want 0 to be slightly lower than middle if 360 is max.
-            // If cy = 30. 360*0.08 = 28.8. 30-28.8 = 1.2 (Top edge).
-            // -180*0.08 = -14.4. 30+14.4 = 44.4 (Bottom area).
-            // Fits perfect.
-            const sScale = 0.08;
+            // Let's just scale everything by dividing by 4 and centering.
+            // 360/4 = 90. -180/4 = -45. Total range 135px? Canvas is 60px.
+            // Divide by 20? 18px. Good.
+            // User request: "Up to 370".
+            // Height 60. Center 30. Max delta 30.
+            // 370 * scale <= 28 (padding). scale <= 0.075.
+            const sScale = 0.07; // Fits 370 range.
             const cy = h / 2;
 
             // Grid
