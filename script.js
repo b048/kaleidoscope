@@ -309,36 +309,34 @@ function maintainActivePopulation() {
 
     if (activeGems.length < targetCount) {
         // Spawn (Center of Boundary)
-        if (Math.random() < 0.2) { // Throttle spawning
-            const x = boundaryCenter.x;
-            const y = boundaryCenter.y;
-            // Pass allowSpecial = false to prevent new eyes during adjust
-            const newGem = createGem(x, y, false, false);
+        // Throttle removed for faster speed (User Request)
+        const x = boundaryCenter.x;
+        const y = boundaryCenter.y;
+        // Pass allowSpecial = false to prevent new eyes during adjust
+        const newGem = createGem(x, y, false, false);
 
-            // Give it a random kick
-            const angle = Math.random() * Math.PI * 2;
-            const force = (0.002 + Math.random() * 0.005) * newGem.mass;
-            Body.applyForce(newGem, newGem.position, {
-                x: Math.cos(angle) * force,
-                y: Math.sin(angle) * force
-            });
-            Composite.add(engine.world, newGem);
-        }
+        // Give it a random kick
+        const angle = Math.random() * Math.PI * 2;
+        const force = (0.002 + Math.random() * 0.005) * newGem.mass;
+        Body.applyForce(newGem, newGem.position, {
+            x: Math.cos(angle) * force,
+            y: Math.sin(angle) * force
+        });
+        Composite.add(engine.world, newGem);
     } else if (activeGems.length > targetCount) {
-        // Remove (Throttle)
-        if (Math.random() < 0.2) {
-            // Filter out Eyes/SuperEyes to preserve them
-            const removableGems = activeGems.filter(b => {
-                const type = b.plugin ? b.plugin.type : 'normal';
-                return type !== 'eye' && type !== 'super_eye';
-            });
+        // Remove
+        // Throttle removed for faster speed
+        // Filter out Eyes/SuperEyes to preserve them
+        const removableGems = activeGems.filter(b => {
+            const type = b.plugin ? b.plugin.type : 'normal';
+            return type !== 'eye' && type !== 'super_eye';
+        });
 
-            if (removableGems.length > 0) {
-                const index = Math.floor(Math.random() * removableGems.length);
-                const bodyToRemove = removableGems[index];
-                Composite.remove(engine.world, bodyToRemove);
-                spawnParticle(bodyToRemove.position.x, bodyToRemove.position.y, bodyToRemove.render.fillStyle);
-            }
+        if (removableGems.length > 0) {
+            const index = Math.floor(Math.random() * removableGems.length);
+            const bodyToRemove = removableGems[index];
+            Composite.remove(engine.world, bodyToRemove);
+            spawnParticle(bodyToRemove.position.x, bodyToRemove.position.y, bodyToRemove.render.fillStyle);
         }
     }
 }
