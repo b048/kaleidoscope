@@ -2074,7 +2074,7 @@ function render() {
     requestAnimationFrame(render);
 }
 
-render();
+// render() moved to end of file
 
 // --- EXPORT FOR HTML BUTTONS ---
 window.setMode = function (mode) {
@@ -2158,7 +2158,9 @@ window.setPhysicsSubmode = function (mode) {
         }
     }
 
-    // CRITICAL FIX: Do NOT reset targetObjectCount here.
     // The density is maintained by maintainActivePopulation().
     // We expect user preference (count slider) to persist unless explicitly changed.
 };
+
+// Start Loop
+render();
