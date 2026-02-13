@@ -273,15 +273,16 @@ function maintainActivePopulation() {
     let activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
 
     // Cleanup Out-of-Bounds (Don't count them, remove them)
-    activeGems.forEach(b => {
-        const dx = b.position.x - boundaryCenter.x;
-        const dy = b.position.y - boundaryCenter.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist > boundaryRadius + 60) { // Margin
-            Composite.remove(engine.world, b);
-            spawnParticle(b.position.x, b.position.y, b.render.fillStyle);
-        }
-    });
+    // DISABLED: Allow objects to exist outside the boundary circle
+    // activeGems.forEach(b => {
+    //     const dx = b.position.x - boundaryCenter.x;
+    //     const dy = b.position.y - boundaryCenter.y;
+    //     const dist = Math.sqrt(dx * dx + dy * dy);
+    //     if (dist > boundaryRadius + 60) { // Margin
+    //         Composite.remove(engine.world, b);
+    //         spawnParticle(b.position.x, b.position.y, b.render.fillStyle);
+    //     }
+    // });
 
     // Re-fetch after cleanup to get accurate count
     bodies = Composite.allBodies(engine.world);
@@ -485,9 +486,12 @@ function checkSupplyAndCleanup() {
         if (body.isStatic) return;
         const distFromCenter = Vector.magnitude(Vector.sub(body.position, boundaryCenter));
         const isInSupplyZone = body.position.y > renderHeight - CONFIG.supplyBoxHeight - 50;
+        // DISABLED: Allow objects outside boundary circle to persist
+        // Only remove objects that are extremely far off-screen (beyond reasonable bounds)
         if (distFromCenter > boundaryRadius * 1.5 && !isInSupplyZone) {
-            if (body.position.x < -100 || body.position.x > renderWidth + 100 ||
-                body.position.y < -100 || body.position.y > renderHeight + 100) {
+            // Only remove if extremely far off-screen (much larger margin)
+            if (body.position.x < -renderWidth * 2 || body.position.x > renderWidth * 3 ||
+                body.position.y < -renderHeight * 2 || body.position.y > renderHeight * 3) {
                 Composite.remove(engine.world, body);
             }
         }
