@@ -238,7 +238,7 @@ let supplySlots = [];
 const slotBaseY = renderHeight - CONFIG.supplyBoxHeight + 20;
 
 function updateSupplySlots() {
-    // Clear existing supply bodies from the world to prevent duplicates
+    // Clear existing supply bodies to be safe (though fixed now)
     const bodies = Composite.allBodies(engine.world);
     bodies.forEach(b => {
         if (b.label === 'gem_supply') {
@@ -247,17 +247,14 @@ function updateSupplySlots() {
     });
 
     supplySlots = [];
-    // Base: Rows 2, Cols 6 (12 slots)
-    const baseCols = CONFIG.slotCountCols; // 6
-    const newCols = Math.max(3, Math.floor(baseCols * densityScale));
-
-    const slotWidth = renderWidth / newCols;
-    const slotRowHeight = CONFIG.supplyBoxHeight / CONFIG.slotRows; // 2 rows
-
-    const rows = (densityScale > 1.5) ? 3 : CONFIG.slotRows;
+    // Fixed: Rows 2, Cols 6 (12 slots)
+    const cols = CONFIG.slotCountCols;
+    const rows = CONFIG.slotRows;
+    const slotWidth = renderWidth / cols;
+    const slotRowHeight = CONFIG.supplyBoxHeight / rows;
 
     for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < newCols; col++) {
+        for (let col = 0; col < cols; col++) {
             supplySlots.push({
                 x: (col + 0.5) * slotWidth,
                 y: slotBaseY + (row * slotRowHeight),
@@ -267,8 +264,40 @@ function updateSupplySlots() {
     }
 }
 
+// ...
+
+// Population Control
+function maintainActivePopulation() {
+    const bodies = Composite.allBodies(engine.world);
+    const activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
+
+    // Calculate Target
+    // Base is CONFIG.initialBeadCount (32)
+    // Scale 0.2 -> 6.4 (6)
+    // Scale 2.0 -> 64
+    const targetCount = Math.floor(CONFIG.initialBeadCount * densityScale);
+
+    if (activeGems.length < targetCount) {
+        // Spawn (Rate limited? Maybe 1 per frame is fine if missing many)
+        if (Math.random() < 0.1) { // Throttle spawning
+            const x = Math.random() * renderWidth;
+            const y = -50; // Above screen
+            const newGem = createGem(x, y, false);
+            Composite.add(engine.world, newGem);
+        }
+    } else if (activeGems.length > targetCount) {
+        // Remove (Throttle)
+        if (Math.random() < 0.1) {
+            // Remove random one? Or oldest? Random is easiest.
+            const index = Math.floor(Math.random() * activeGems.length);
+            const bodyToRemove = activeGems[index];
+            Composite.remove(engine.world, bodyToRemove);
+            spawnParticle(bodyToRemove.position.x, bodyToRemove.position.y, bodyToRemove.render.fillStyle);
+        }
+    }
+}
+
 // Supply Slots (Dynamic)
-// Replaced static loop with updateSupplySlots() triggered by init or slider.
 updateSupplySlots();
 
 // UI Listeners (Bottom of file usually, but adding here for context or moving to setup)
@@ -278,7 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
         densityCtrl.addEventListener('input', (e) => {
             densityScale = parseFloat(e.target.value);
             document.getElementById('val-density').textContent = densityScale.toFixed(1);
-            updateSupplySlots();
+            // No need to update supply slots anymore
         });
     }
 });
@@ -889,6 +918,7 @@ async function setupAudio() {
 function drawPhysicsMode(timestamp, ctx) {
     // 0. Supply Logic
     checkSupplyAndCleanup();
+    maintainActivePopulation(); // Dynamic Density Control
 
     // Zero-G Thermal Agitation (Keep things moving)
     if (physicsSubMode === 'float') {
