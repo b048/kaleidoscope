@@ -318,22 +318,20 @@ function maintainActivePopulation() {
 
     // Interactive Logic
     // Interactive Logic
+    // Sync slider UI to target if not interacting (e.g. after resize or init)
     if (!isUserInteractingWithCount) {
-        // IDLE: Sync slider to target count (e.g. if updated by size change)
         const countCtrl = document.getElementById('countControl');
         const countVal = document.getElementById('val-count-setting');
         if (countCtrl && countVal) {
-            // Only update DOM if value changed to avoid expensive layout thrashing every frame?
-            // Values are integers, so check vs value.
+            // Only update DOM if value changed
             if (parseInt(countCtrl.value) !== targetObjectCount) {
                 countCtrl.value = targetObjectCount;
                 countVal.textContent = targetObjectCount;
             }
         }
-        // Do NOT return. Proceed to spawn/cull to maintain target.
     }
 
-    // ACTIVE: Adjust towards target
+    // Always adjust towards target (Active Population Control)
     const targetCount = targetObjectCount;
 
     if (activeGems.length < targetCount) {
