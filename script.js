@@ -268,24 +268,46 @@ function updateSupplySlots() {
 
 // Population Control
 function maintainActivePopulation() {
-    const bodies = Composite.allBodies(engine.world);
-    const activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
+    let bodies = Composite.allBodies(engine.world);
+    let activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
+
+    // Cleanup Out-of-Bounds (Don't count them, remove them)
+    activeGems.forEach(b => {
+        const dx = b.position.x - boundaryCenter.x;
+        const dy = b.position.y - boundaryCenter.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > boundaryRadius + 60) { // Margin
+            Composite.remove(engine.world, b);
+            spawnParticle(b.position.x, b.position.y, b.render.fillStyle);
+        }
+    });
+
+    // Re-fetch after cleanup to get accurate count
+    bodies = Composite.allBodies(engine.world);
+    activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
 
     // Calculate Target
     const targetCount = targetObjectCount;
 
     if (activeGems.length < targetCount) {
-        // Spawn (Rate limited? Maybe 1 per frame is fine if missing many)
-        if (Math.random() < 0.1) { // Throttle spawning
-            const x = Math.random() * renderWidth;
-            const y = -50; // Above screen
+        // Spawn (Center of Boundary)
+        if (Math.random() < 0.2) { // Throttle spawning
+            const x = boundaryCenter.x;
+            const y = boundaryCenter.y;
             const newGem = createGem(x, y, false);
+
+            // Give it a random kick
+            const angle = Math.random() * Math.PI * 2;
+            const force = (0.002 + Math.random() * 0.005) * newGem.mass;
+            Body.applyForce(newGem, newGem.position, {
+                x: Math.cos(angle) * force,
+                y: Math.sin(angle) * force
+            });
             Composite.add(engine.world, newGem);
         }
     } else if (activeGems.length > targetCount) {
         // Remove (Throttle)
-        if (Math.random() < 0.1) {
-            // Remove random one? Or oldest? Random is easiest.
+        if (Math.random() < 0.2) {
             const index = Math.floor(Math.random() * activeGems.length);
             const bodyToRemove = activeGems[index];
             Composite.remove(engine.world, bodyToRemove);
