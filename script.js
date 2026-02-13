@@ -2117,3 +2117,48 @@ window.addEventListener('keydown', (e) => {
     if (e.key === '2') window.setMode('audio');
     if (e.key === '3') window.setMode('fractal');
 });
+
+// --- Physics Submode Control (Fix for Count Reset) ---
+window.setPhysicsSubmode = function (mode) {
+    // Safe assignment to global or existing variable
+    if (typeof physicsSubMode !== 'undefined') {
+        physicsSubMode = mode;
+    } else {
+        window.physicsSubMode = mode;
+    }
+
+    // UI Update
+    document.querySelectorAll('.submode-btn').forEach(btn => {
+        btn.classList.remove('active');
+        // Reset style (except Eraser if we want to keep it separate, but usually submodes are mutually exclusive?)
+        // The HTML logic seemed to treat them as a group.
+        if (btn.id !== 'btn-eraser') {
+            btn.style.background = 'rgba(0,0,0,0.4)';
+        }
+    });
+
+    const btn = document.getElementById('btn-mode-' + mode);
+    if (btn) {
+        btn.classList.add('active');
+        btn.style.background = 'rgba(0,255,255,0.3)';
+    }
+
+    // Handle Gyro Permission
+    if (mode === 'gyro') {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission()
+                .then(response => {
+                    if (response === 'granted') {
+                        if (typeof initSensors === 'function') initSensors();
+                    }
+                })
+                .catch(console.error);
+        } else {
+            if (typeof initSensors === 'function') initSensors();
+        }
+    }
+
+    // CRITICAL FIX: Do NOT reset targetObjectCount here.
+    // The density is maintained by maintainActivePopulation().
+    // We expect user preference (count slider) to persist unless explicitly changed.
+};
