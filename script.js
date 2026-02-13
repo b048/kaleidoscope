@@ -573,18 +573,31 @@ function handleOrientation(event) {
     const x = rawX * cos - rawY * sin;
     const y = rawX * sin + rawY * cos;
 
+    // Move gravity assignment before debug update if needed, or just keep one.
     engine.world.gravity.x = x * gravityScale;
     engine.world.gravity.y = y * gravityScale;
 
-    // Update Dashboard
-    const dashboard = document.getElementById('sensor-dashboard');
-    if (dashboard) {
-        dashboard.style.display = 'block';
-        document.getElementById('val-alpha').textContent = (event.alpha || 0).toFixed(1);
-        document.getElementById('val-beta').textContent = (event.beta || 0).toFixed(1);
-        document.getElementById('val-gamma').textContent = (event.gamma || 0).toFixed(1);
-    }
+    // Update Debug State
+    debugState.alpha = (event.alpha || 0).toFixed(1);
+    debugState.beta = (event.beta || 0).toFixed(1);
+    debugState.gamma = (event.gamma || 0).toFixed(1);
 }
+
+// Debug State
+const debugState = {
+    visible: false,
+    alpha: 0, beta: 0, gamma: 0,
+    mouseX: 0, mouseY: 0
+};
+
+window.toggleDebug = function () {
+    debugState.visible = !debugState.visible;
+    const dbg = document.getElementById('debug-dashboard');
+    if (dbg) {
+        if (debugState.visible) dbg.classList.add('visible');
+        else dbg.classList.remove('visible');
+    }
+};
 
 // Sensor Initialization on First Interaction
 const initSensors = async () => {
@@ -610,6 +623,12 @@ const initSensors = async () => {
 
 window.addEventListener('click', initSensors);
 window.addEventListener('touchstart', initSensors);
+
+// Track Mouse for Debug
+document.addEventListener('mousemove', (e) => {
+    debugState.mouseX = e.clientX;
+    debugState.mouseY = e.clientY;
+});
 
 // Mouse Gravity
 if (!('ontouchstart' in window)) {
@@ -1606,6 +1625,138 @@ function render() {
             ctx.font = '16px monospace';
             ctx.fillText("Frac Crash: " + e.message, 20, 100);
             console.error(e);
+        }
+    }
+
+    if (debugState.visible) {
+        // Colors
+        const colAlpha = '#00ff00';
+        const colBeta = '#ffff00';
+        const colGamma = '#ff00ff';
+        const colGX = '#ff4444';
+        const colGY = '#00ffff';
+
+        const elAlpha = document.getElementById('val-alpha');
+        const elBeta = document.getElementById('val-beta');
+        const elGamma = document.getElementById('val-gamma');
+        const elGX = document.getElementById('val-grav-x');
+        const elGY = document.getElementById('val-grav-y');
+
+        elAlpha.style.color = colAlpha; elAlpha.textContent = debugState.alpha;
+        elBeta.style.color = colBeta; elBeta.textContent = debugState.beta;
+        elGamma.style.color = colGamma; elGamma.textContent = debugState.gamma;
+
+        const gx = engine.world.gravity.x;
+        const gy = engine.world.gravity.y;
+
+        elGX.style.color = colGX; elGX.textContent = gx.toFixed(2);
+        elGY.style.color = colGY; elGY.textContent = gy.toFixed(2);
+
+        document.getElementById('val-mouse').textContent = debugState.mouseX + ',' + debugState.mouseY;
+        document.getElementById('val-res').textContent = renderWidth + 'x' + renderHeight;
+
+        // --- Gravity Graph (Acc) ---
+        if (!debugState.historyX) debugState.historyX = new Array(140).fill(0);
+        if (!debugState.historyY) debugState.historyY = new Array(140).fill(0);
+
+        debugState.historyX.push(gx);
+        debugState.historyX.shift();
+        debugState.historyY.push(gy);
+        debugState.historyY.shift();
+
+        const canvasG = document.getElementById('debug-graph');
+        if (canvasG) {
+            const ctxG = canvasG.getContext('2d');
+            const w = canvasG.width;
+            const h = canvasG.height;
+            ctxG.clearRect(0, 0, w, h);
+
+            // Grid
+            ctxG.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctxG.lineWidth = 1;
+            ctxG.beginPath();
+            ctxG.moveTo(0, h / 2); ctxG.lineTo(w, h / 2);
+            ctxG.stroke();
+
+            // Draw X (Red)
+            ctxG.strokeStyle = colGX;
+            ctxG.lineWidth = 2;
+            ctxG.beginPath();
+            for (let i = 0; i < debugState.historyX.length; i++) {
+                const val = Math.max(-2, Math.min(2, debugState.historyX[i])); // Clamp -2 to 2
+                const y = h / 2 - (val * h / 4);
+                if (i === 0) ctxG.moveTo(i, y); else ctxG.lineTo(i, y);
+            }
+            ctxG.stroke();
+
+            // Draw Y (Blue/Cyan)
+            ctxG.strokeStyle = colGY;
+            ctxG.beginPath();
+            for (let i = 0; i < debugState.historyY.length; i++) {
+                const val = Math.max(-2, Math.min(2, debugState.historyY[i]));
+                const y = h / 2 - (val * h / 4);
+                if (i === 0) ctxG.moveTo(i, y); else ctxG.lineTo(i, y);
+            }
+            ctxG.stroke();
+        }
+
+        // --- Sensor Graph (A/B/G) ---
+        if (!debugState.histA) debugState.histA = new Array(140).fill(0);
+        if (!debugState.histB) debugState.histB = new Array(140).fill(0);
+        if (!debugState.histG) debugState.histG = new Array(140).fill(0);
+
+        debugState.histA.push(parseFloat(debugState.alpha));
+        debugState.histA.shift();
+        debugState.histB.push(parseFloat(debugState.beta));
+        debugState.histB.shift();
+        debugState.histG.push(parseFloat(debugState.gamma));
+        debugState.histG.shift();
+
+        const canvasS = document.getElementById('debug-graph-sensor');
+        if (canvasS) {
+            const ctxS = canvasS.getContext('2d');
+            const w = canvasS.width;
+            const h = canvasS.height;
+            ctxS.clearRect(0, 0, w, h);
+
+            // Scale: -180 to 360. Range = 540.
+            // Center roughly at 90? No, let's map roughly.
+            // A: 0~360
+            // B: -180~180
+            // G: -90~90
+            // Let's use simple scaling: y = val * scale + offset
+            // Fit -180 to 360 in Height.
+            // 0 is at h/2 ? No.
+            // Let's just scale everything by dividing by 4 and centering.
+            // 360/4 = 90. -180/4 = -45. Total range 135px? Canvas is 60px.
+            // Divide by 10? 36px. Good.
+            const scale = 0.15; // 100 deg -> 15px
+            const cy = h / 2;
+
+            // Grid
+            ctxS.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctxS.lineWidth = 1;
+            ctxS.beginPath();
+            ctxS.moveTo(0, cy); ctxS.lineTo(w, cy);
+            ctxS.stroke();
+
+            const drawLine = (arr, color) => {
+                ctxS.strokeStyle = color;
+                ctxS.lineWidth = 1.5;
+                ctxS.beginPath();
+                for (let i = 0; i < arr.length; i++) {
+                    const val = arr[i];
+                    // Wrap Alpha for display? Alpha 0 and 360 jump.
+                    // Just direct plot.
+                    const y = cy - (val * scale);
+                    if (i === 0) ctxS.moveTo(i, y); else ctxS.lineTo(i, y);
+                }
+                ctxS.stroke();
+            };
+
+            drawLine(debugState.histA, colAlpha);
+            drawLine(debugState.histB, colBeta);
+            drawLine(debugState.histG, colGamma);
         }
     }
 

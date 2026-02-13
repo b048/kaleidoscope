@@ -83,6 +83,28 @@ canvas {
     font-weight: bold;
 }
 
+#debug-dashboard {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: lime;
+    padding: 10px;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 200;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(0, 255, 0, 0.3);
+    display: none;
+    /* Hidden by default */
+}
+
+#debug-dashboard.visible {
+    display: block;
+}
+
 /* Modern Floating UI */
 #controls {
     position: absolute;
@@ -256,6 +278,7 @@ body.settings-open .settings-panel {
 
 input[type=range] {
     -webkit-appearance: none;
+    appearance: none;
     width: 100%;
     background: transparent;
 }
@@ -287,7 +310,13 @@ input[type=range]::-webkit-slider-runnable-track {
     }
 
     .logo {
-        display: none;
+        font-size: 0.7rem;
+        /* Reduce size instead of hiding */
+    }
+
+    #debug-dashboard {
+        font-size: 10px;
+        width: 160px;
     }
 
     /* Save space on small screens */

@@ -11,23 +11,15 @@
 
 <body>
 
-    <div id="version-display"
-        style="position: fixed; bottom: 5px; right: 5px; color: rgba(255,255,255,0.3); font-size: 10px; font-family: sans-serif; pointer-events: none; z-index: 1000;">
-        v1.3</div>
     <div id="controls">
-        <div id="sensor-dashboard"
-            style="font-family: monospace; font-size: 10px; color: lime; padding: 5px; display: none;">
-            <div>A: <span id="val-alpha">0</span></div>
-            <div>B: <span id="val-beta">0</span></div>
-            <div>G: <span id="val-gamma">0</span></div>
-        </div>
         <div class="control-header">
-            <div class="logo">KALEID</div>
+            <div class="logo">KALEID <span style="font-size: 0.6em; color: #00d2ff;">v1.4</span></div>
             <div class="mode-switch">
                 <button id="btn-physics" class="mode-btn active" onclick="setMode('physics')">Phys</button>
                 <button id="btn-audio" class="mode-btn" onclick="setMode('audio')">Audio</button>
                 <button id="btn-fractal" class="mode-btn" onclick="setMode('fractal')">Frac</button>
             </div>
+            <button id="toggleDebug" class="icon-btn" onclick="toggleDebug()" title="Debug Info">🐞</button>
             <button id="startAudio" class="icon-btn" onclick="toggleAudio()" title="Toggle Mic">🎤</button>
             <button id="toggleSettings" class="icon-btn" onclick="document.body.classList.toggle('settings-open')"
                 title="Settings">⚙️</button>
@@ -122,6 +114,19 @@
                 </div>
             </div>
         </div>
+    </div>
+    <div id="debug-dashboard">
+        <div>Alpha: <span id="val-alpha">--</span></div>
+        <div>Beta : <span id="val-beta">--</span></div>
+        <div>Gamma: <span id="val-gamma">--</span></div>
+        <div>GravX: <span id="val-grav-x">--</span></div>
+        <div>GravY: <span id="val-grav-y">--</span></div>
+        <div>Mouse: <span id="val-mouse">--</span></div>
+        <div>Res : <span id="val-res">--</span></div>
+        <canvas id="debug-graph" width="140" height="60"
+            style="width: 100%; margin-top: 5px; background: rgba(0,0,0,0.3);"></canvas>
+        <canvas id="debug-graph-sensor" width="140" height="60"
+            style="width: 100%; margin-top: 2px; background: rgba(0,0,0,0.3);"></canvas>
     </div>
     <canvas id="kaleidoscope-canvas"></canvas>
     <script src="script.js"></script>
