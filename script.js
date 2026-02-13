@@ -1924,287 +1924,233 @@ function render() {
 
     ctx.clearRect(0, 0, renderWidth, renderHeight);
 
-    // Explicit error handling per mode
-    // Explicit error handling per mode
-    if (currentMode === 'physics') {
-        try {
-            drawPhysicsMode(timestamp, ctx);
-        } catch (e) {
-            ctx.fillStyle = 'red';
-            ctx.font = '16px monospace';
-            ctx.fillText("Phys Crash: " + e.message, 20, 100);
-            ctx.fillText(e.stack ? e.stack.substring(0, 50) : "No Stack", 20, 120);
-            console.error(e);
-        }
-    }
-    /* 
-    else if (currentMode === 'audio') {
-        try {
-            drawAudioVisualizer(timestamp, ctx);
-        } catch (e) {
-            ctx.fillStyle = 'red';
-            ctx.font = '16px monospace';
-            ctx.fillText("Audio Crash: " + e.message, 20, 100);
-            console.error(e);
-        }
-    } else if (currentMode === 'fractal') {
-        try {
-            drawFractal(timestamp, ctx);
-        } catch (e) { 
-             // ... handles below
-        }
-    } 
-    */
-    ctx.fillStyle = 'red';
-    ctx.font = '16px monospace';
-    ctx.fillText("Frac Crash: " + e.message, 20, 100);
-    console.error(e);
-}
+    // 物理モードのみを描画（Audio / Frac は一旦無効化）
+    try {
+        drawPhysicsMode(timestamp, ctx);
+    } catch (e) {
+        ctx.fillStyle = 'red';
+        ctx.font = '16px monospace';
+        ctx.fillText("Phys Crash: " + e.message, 20, 100);
+        ctx.fillText(e.stack ? e.stack.substring(0, 50) : "No Stack", 20, 120);
+        console.error(e);
     }
 
-if (debugState.visible) {
-    // Colors
-    const colAlpha = '#ffffff'; // White for better visibility (was Green)
-    const colBeta = '#ffff00';
-    const colGamma = '#ff00ff';
-    const colGX = '#ff4444';
-    const colGY = '#00ffff';
+    // --- Debug Overlay ---
+    if (debugState.visible) {
+        // Colors
+        const colAlpha = '#ffffff'; // White for better visibility (was Green)
+        const colBeta = '#ffff00';
+        const colGamma = '#ff00ff';
+        const colGX = '#ff4444';
+        const colGY = '#00ffff';
 
-    const elAlpha = document.getElementById('val-alpha');
-    const elBeta = document.getElementById('val-beta');
-    const elGamma = document.getElementById('val-gamma');
-    const elGX = document.getElementById('val-grav-x');
-    const elGY = document.getElementById('val-grav-y');
+        const elAlpha = document.getElementById('val-alpha');
+        const elBeta = document.getElementById('val-beta');
+        const elGamma = document.getElementById('val-gamma');
+        const elGX = document.getElementById('val-grav-x');
+        const elGY = document.getElementById('val-grav-y');
 
-    elAlpha.style.color = colAlpha; elAlpha.textContent = debugState.alpha;
-    elBeta.style.color = colBeta; elBeta.textContent = debugState.beta;
-    elGamma.style.color = colGamma; elGamma.textContent = debugState.gamma;
+        elAlpha.style.color = colAlpha; elAlpha.textContent = debugState.alpha;
+        elBeta.style.color = colBeta; elBeta.textContent = debugState.beta;
+        elGamma.style.color = colGamma; elGamma.textContent = debugState.gamma;
 
-    const gx = engine.world.gravity.x;
-    const gy = engine.world.gravity.y;
+        const gx = engine.world.gravity.x;
+        const gy = engine.world.gravity.y;
 
-    elGX.style.color = colGX; elGX.textContent = gx.toFixed(2);
-    elGY.style.color = colGY; elGY.textContent = gy.toFixed(2);
+        elGX.style.color = colGX; elGX.textContent = gx.toFixed(2);
+        elGY.style.color = colGY; elGY.textContent = gy.toFixed(2);
 
-    // Count & Energy
-    const bodies = engine.world.bodies;
-    let count = 0;
-    let totalKE = 0;
-    for (let b of bodies) {
-        if (!b.isStatic) {
-            count++;
-            totalKE += 0.5 * b.mass * (b.speed * b.speed);
-        }
-    }
-    document.getElementById('val-count').textContent = count;
-    document.getElementById('val-energy').textContent = Math.floor(totalKE);
-    document.getElementById('val-fps').textContent = currentFps;
-
-    document.getElementById('val-mouse').textContent = debugState.mouseX + ',' + debugState.mouseY;
-    document.getElementById('val-res').textContent = renderWidth + 'x' + renderHeight;
-
-    // --- Gravity Graph (Acc) ---
-    if (!debugState.historyX) debugState.historyX = new Array(280).fill(0);
-    if (!debugState.historyY) debugState.historyY = new Array(280).fill(0);
-
-    debugState.historyX.push(gx);
-    debugState.historyX.shift();
-    debugState.historyY.push(gy);
-    debugState.historyY.shift();
-
-    const canvasG = document.getElementById('debug-graph');
-    if (canvasG) {
-        const ctxG = canvasG.getContext('2d');
-        const w = canvasG.width;
-        const h = canvasG.height;
-        ctxG.clearRect(0, 0, w, h);
-
-        // Grid
-        ctxG.strokeStyle = 'rgba(255,255,255,0.1)';
-        ctxG.lineWidth = 1;
-        ctxG.beginPath();
-        ctxG.moveTo(0, h / 2); ctxG.lineTo(w, h / 2);
-        ctxG.stroke();
-
-        // Draw X (Red)
-        ctxG.strokeStyle = colGX;
-        ctxG.lineWidth = 2;
-        ctxG.beginPath();
-        for (let i = 0; i < debugState.historyX.length; i++) {
-            const val = Math.max(-2, Math.min(2, debugState.historyX[i])); // Clamp -2 to 2
-            const y = h / 2 - (val * h / 4);
-            if (i === 0) ctxG.moveTo(i, y); else ctxG.lineTo(i, y);
-        }
-        ctxG.stroke();
-
-        // Draw Y (Blue/Cyan)
-        ctxG.strokeStyle = colGY;
-        ctxG.beginPath();
-        for (let i = 0; i < debugState.historyY.length; i++) {
-            const val = Math.max(-2, Math.min(2, debugState.historyY[i]));
-            const y = h / 2 - (val * h / 4);
-            if (i === 0) ctxG.moveTo(i, y); else ctxG.lineTo(i, y);
-        }
-        ctxG.stroke();
-    }
-
-    // --- Sensor Graph (A/B/G) ---
-    if (!debugState.histA) debugState.histA = new Array(280).fill(0);
-    if (!debugState.histB) debugState.histB = new Array(280).fill(0);
-    if (!debugState.histG) debugState.histG = new Array(280).fill(0);
-
-    debugState.histA.push(parseFloat(debugState.alpha));
-    debugState.histA.shift();
-    debugState.histB.push(parseFloat(debugState.beta));
-    debugState.histB.shift();
-    debugState.histG.push(parseFloat(debugState.gamma));
-    debugState.histG.shift();
-
-    const canvasS = document.getElementById('debug-graph-sensor');
-    if (canvasS) {
-        const ctxS = canvasS.getContext('2d');
-        const w = canvasS.width;
-        const h = canvasS.height;
-        ctxS.clearRect(0, 0, w, h);
-
-        // Scale to fit -180 to 360 comfortably in 60px
-        // Range 540. 60/540 ~ 0.11. Use 0.08 to be safe.
-        // Center shift: we want 0 to be slightly lower than middle if 360 is max.
-        // Let's just scale everything by dividing by 4 and centering.
-        // 360/4 = 90. -180/4 = -45. Total range 135px? Canvas is 60px.
-        // Divide by 20? 18px. Good.
-        // User request: "Up to 370".
-        // Height 60. Center 30. Max delta 30.
-        // 370 * scale <= 28 (padding). scale <= 0.075.
-        const sScale = 0.07; // Fits 370 range.
-        const cy = h / 2;
-
-        // Grid
-        ctxS.strokeStyle = 'rgba(255,255,255,0.1)';
-        ctxS.lineWidth = 1;
-        ctxS.beginPath();
-        ctxS.moveTo(0, cy); ctxS.lineTo(w, cy);
-        ctxS.stroke();
-
-        const drawLine = (arr, color) => {
-            ctxS.strokeStyle = color;
-            ctxS.lineWidth = 1.5;
-            ctxS.beginPath();
-            for (let i = 0; i < arr.length; i++) {
-                const val = arr[i];
-                // Wrap Alpha for display? Alpha 0 and 360 jump.
-                // Just direct plot.
-                const y = cy - (val * sScale);
-                if (i === 0) ctxS.moveTo(i, y); else ctxS.lineTo(i, y);
+        // Count & Energy
+        const bodies = engine.world.bodies;
+        let count = 0;
+        let totalKE = 0;
+        for (let b of bodies) {
+            if (!b.isStatic) {
+                count++;
+                totalKE += 0.5 * b.mass * (b.speed * b.speed);
             }
-            ctxS.stroke();
-        };
+        }
+        document.getElementById('val-count').textContent = count;
+        document.getElementById('val-energy').textContent = Math.floor(totalKE);
+        document.getElementById('val-fps').textContent = currentFps;
 
-        drawLine(debugState.histA, colAlpha);
-        drawLine(debugState.histB, colBeta);
-        drawLine(debugState.histG, colGamma);
-    }
+        document.getElementById('val-mouse').textContent = debugState.mouseX + ',' + debugState.mouseY;
+        document.getElementById('val-res').textContent = renderWidth + 'x' + renderHeight;
 
-    // --- Gravity Arrow (Vector) ---
-    const canvasA = document.getElementById('debug-arrow');
-    if (canvasA) {
-        const ctxA = canvasA.getContext('2d');
-        const w = canvasA.width;
-        const h = canvasA.height;
-        const cx = w / 2;
-        const cy = h / 2;
-        ctxA.clearRect(0, 0, w, h);
+        // --- Gravity Graph (Acc) ---
+        if (!debugState.historyX) debugState.historyX = new Array(280).fill(0);
+        if (!debugState.historyY) debugState.historyY = new Array(280).fill(0);
 
-        // Outer ring
-        ctxA.strokeStyle = 'rgba(255,255,255,0.3)';
-        ctxA.lineWidth = 1;
-        ctxA.beginPath();
-        ctxA.arc(cx, cy, w / 2 - 2, 0, Math.PI * 2);
-        ctxA.stroke();
+        debugState.historyX.push(gx);
+        debugState.historyX.shift();
+        debugState.historyY.push(gy);
+        debugState.historyY.shift();
 
-        // Calculate Vector Properties
-        const mag = Math.sqrt(gx * gx + gy * gy);
-        // Color based on Magnitude
-        // Map 0 (Zero-G) -> Blue (240), 1 (Normal) -> Green (120), 2+ (High) -> Red (0)
-        let hue = 240 - (mag * 120);
-        if (hue < 0) hue = 0;
-        if (hue > 240) hue = 240;
-        const arrowColor = `hsl(${hue}, 100%, 50%)`;
+        const canvasG = document.getElementById('debug-graph');
+        if (canvasG) {
+            const ctxG = canvasG.getContext('2d');
+            const w = canvasG.width;
+            const h = canvasG.height;
+            ctxG.clearRect(0, 0, w, h);
 
-        // Fixed Length Direction
-        const arrowLen = w / 2 - 4;
-        let dirX = 0, dirY = -1; // Default up? Or 0?
-        if (mag > 0.01) {
-            dirX = gx / mag;
-            dirY = gy / mag;
+            // Grid
+            ctxG.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctxG.lineWidth = 1;
+            ctxG.beginPath();
+            ctxG.moveTo(0, h / 2); ctxG.lineTo(w, h / 2);
+            ctxG.stroke();
+
+            // Draw X (Red)
+            ctxG.strokeStyle = colGX;
+            ctxG.lineWidth = 2;
+            ctxG.beginPath();
+            for (let i = 0; i < debugState.historyX.length; i++) {
+                const val = Math.max(-2, Math.min(2, debugState.historyX[i])); // Clamp -2 to 2
+                const y = h / 2 - (val * h / 4);
+                if (i === 0) ctxG.moveTo(i, y); else ctxG.lineTo(i, y);
+            }
+            ctxG.stroke();
+
+            // Draw Y (Blue/Cyan)
+            ctxG.strokeStyle = colGY;
+            ctxG.beginPath();
+            for (let i = 0; i < debugState.historyY.length; i++) {
+                const val = Math.max(-2, Math.min(2, debugState.historyY[i]));
+                const y = h / 2 - (val * h / 4);
+                if (i === 0) ctxG.moveTo(i, y); else ctxG.lineTo(i, y);
+            }
+            ctxG.stroke();
         }
 
-        const endX = cx + dirX * arrowLen;
-        const endY = cy + dirY * arrowLen;
+        // --- Sensor Graph (A/B/G) ---
+        if (!debugState.histA) debugState.histA = new Array(280).fill(0);
+        if (!debugState.histB) debugState.histB = new Array(280).fill(0);
+        if (!debugState.histG) debugState.histG = new Array(280).fill(0);
 
-        ctxA.strokeStyle = arrowColor;
-        ctxA.lineWidth = 3;
-        ctxA.beginPath();
-        ctxA.moveTo(cx, cy);
-        ctxA.lineTo(endX, endY);
-        ctxA.stroke();
+        debugState.histA.push(parseFloat(debugState.alpha));
+        debugState.histA.shift();
+        debugState.histB.push(parseFloat(debugState.beta));
+        debugState.histB.shift();
+        debugState.histG.push(parseFloat(debugState.gamma));
+        debugState.histG.shift();
 
-        // Arrow head
-        const angle = Math.atan2(dirY, dirX);
-        ctxA.beginPath();
-        ctxA.moveTo(endX, endY);
-        ctxA.lineTo(endX - 7 * Math.cos(angle - Math.PI / 6), endY - 7 * Math.sin(angle - Math.PI / 6));
-        ctxA.lineTo(endX - 7 * Math.cos(angle + Math.PI / 6), endY - 7 * Math.sin(angle + Math.PI / 6));
-        ctxA.closePath();
-        ctxA.fillStyle = arrowColor;
-        ctxA.fill();
+        const canvasS = document.getElementById('debug-graph-sensor');
+        if (canvasS) {
+            const ctxS = canvasS.getContext('2d');
+            const w = canvasS.width;
+            const h = canvasS.height;
+            ctxS.clearRect(0, 0, w, h);
+
+            const sScale = 0.07; // Fits 370 range.
+            const cy = h / 2;
+
+            // Grid
+            ctxS.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctxS.lineWidth = 1;
+            ctxS.beginPath();
+            ctxS.moveTo(0, cy); ctxS.lineTo(w, cy);
+            ctxS.stroke();
+
+            const drawLine = (arr, color) => {
+                ctxS.strokeStyle = color;
+                ctxS.lineWidth = 1.5;
+                ctxS.beginPath();
+                for (let i = 0; i < arr.length; i++) {
+                    const val = arr[i];
+                    const y = cy - (val * sScale);
+                    if (i === 0) ctxS.moveTo(i, y); else ctxS.lineTo(i, y);
+                }
+                ctxS.stroke();
+            };
+
+            drawLine(debugState.histA, colAlpha);
+            drawLine(debugState.histB, colBeta);
+            drawLine(debugState.histG, colGamma);
+        }
+
+        // --- Gravity Arrow (Vector) ---
+        const canvasA = document.getElementById('debug-arrow');
+        if (canvasA) {
+            const ctxA = canvasA.getContext('2d');
+            const w = canvasA.width;
+            const h = canvasA.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            ctxA.clearRect(0, 0, w, h);
+
+            // Outer ring
+            ctxA.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctxA.lineWidth = 1;
+            ctxA.beginPath();
+            ctxA.arc(cx, cy, w / 2 - 2, 0, Math.PI * 2);
+            ctxA.stroke();
+
+            // Calculate Vector Properties
+            const mag = Math.sqrt(gx * gx + gy * gy);
+            let hue = 240 - (mag * 120);
+            if (hue < 0) hue = 0;
+            if (hue > 240) hue = 240;
+            const arrowColor = `hsl(${hue}, 100%, 50%)`;
+
+            // Fixed Length Direction
+            const arrowLen = w / 2 - 4;
+            let dirX = 0, dirY = -1;
+            if (mag > 0.01) {
+                dirX = gx / mag;
+                dirY = gy / mag;
+            }
+
+            const endX = cx + dirX * arrowLen;
+            const endY = cy + dirY * arrowLen;
+
+            ctxA.strokeStyle = arrowColor;
+            ctxA.lineWidth = 3;
+            ctxA.beginPath();
+            ctxA.moveTo(cx, cy);
+            ctxA.lineTo(endX, endY);
+            ctxA.stroke();
+
+            const angle = Math.atan2(dirY, dirX);
+            ctxA.beginPath();
+            ctxA.moveTo(endX, endY);
+            ctxA.lineTo(endX - 7 * Math.cos(angle - Math.PI / 6), endY - 7 * Math.sin(angle - Math.PI / 6));
+            ctxA.lineTo(endX - 7 * Math.cos(angle + Math.PI / 6), endY - 7 * Math.sin(angle + Math.PI / 6));
+            ctxA.closePath();
+            ctxA.fillStyle = arrowColor;
+            ctxA.fill();
+        }
     }
-}
 
-ctx.globalCompositeOperation = 'source-over';
-requestAnimationFrame(render);
+    ctx.globalCompositeOperation = 'source-over';
+    requestAnimationFrame(render);
 }
-
 render();
 
 // --- EXPORT FOR HTML BUTTONS ---
+// モード切替：現在は physics のみ有効（Audio / Frac は一旦無効化）
 window.setMode = function (mode) {
+    if (mode !== 'physics') return; // ignore other modes for now
     if (mode === currentMode) return;
-    currentMode = mode;
-    const fracBtn = document.getElementById('btn-fractal');
-    if (fracBtn) fracBtn.textContent = 'Frac';
-
-    if (mode === 'audio') setupAudio();
+    currentMode = 'physics';
 
     document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-    document.getElementById('btn-' + mode).classList.add('active');
+    const physBtn = document.getElementById('btn-physics');
+    if (physBtn) physBtn.classList.add('active');
 
     const physSet = document.getElementById('physics-settings');
     const fracSet = document.getElementById('fractal-settings');
-
-    if (mode === 'physics') {
-        if (physSet) physSet.style.display = 'block';
-        if (fracSet) fracSet.style.display = 'none';
-    } else if (mode === 'fractal') {
-        if (physSet) physSet.style.display = 'none';
-        if (fracSet) fracSet.style.display = 'block';
-    } else {
-        if (physSet) physSet.style.display = 'none';
-        if (fracSet) fracSet.style.display = 'none';
-    }
-
-    if (currentMode === 'fractal') {
-        const fracBtn = document.getElementById('btn-fractal');
-        if (fracBtn) fracBtn.textContent = 'Fractal';
-    }
+    if (physSet) physSet.style.display = 'block';
+    if (fracSet) fracSet.style.display = 'none';
 };
 
+// Audio トグルは一旦未使用だが、将来のために残しておく
 window.toggleAudio = function () {
-    setupAudio();
+    // setupAudio(); // Audio モード無効化中
 };
 
 window.addEventListener('keydown', (e) => {
     if (e.key === '1') window.setMode('physics');
-    if (e.key === '2') window.setMode('audio');
-    if (e.key === '3') window.setMode('fractal');
+    // '2' / '3' は一旦無効化（Audio / Frac）
+    // if (e.key === '2') window.setMode('audio');
+    // if (e.key === '3') window.setMode('fractal');
 });
