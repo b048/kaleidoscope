@@ -383,8 +383,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Generate Gemstones
 function createGem(x, y, isStaticInBox = false, allowSpecial = true) {
-    // Randomize size more (User Request) -> Expanded range
-    const baseSize = 8 + Math.random() * 25; // 8 to 33 range (More variance)
+    // Randomize size more (Equal Area Distribution)
+    // P(r) ~ 1/r^2 to make Area(r) constant
+    // r = 1 / ( (1/min) - u * ( (1/min) - (1/max) ) )
+    const minSize = 8;
+    const maxSize = 33;
+    const invMin = 1 / minSize;
+    const invMax = 1 / maxSize;
+    const baseSize = 1 / (invMin - Math.random() * (invMin - invMax));
+
     let size = baseSize * globalScale; // Apply scale to supply gems too
 
     const sides = Math.floor(3 + Math.random() * 5);
