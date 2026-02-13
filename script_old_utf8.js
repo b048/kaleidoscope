@@ -1,4 +1,4 @@
-// Matter.js aliases
+﻿// Matter.js aliases
 const Engine = Matter.Engine,
     Render = Matter.Render,
     Runner = Matter.Runner,
@@ -13,7 +13,7 @@ const Engine = Matter.Engine,
 
 // Configuration
 const CONFIG = {
-    initialBeadCount: 32,
+    initialBeadCount: 15,
     wallThickness: 100,
     gemColors: [
         'rgba(255, 0, 0, 0.7)',    // Red
@@ -33,14 +33,7 @@ const CONFIG = {
 let currentMode = 'physics'; // 'physics', 'audio', 'fractal'
 let isSensorActive = false;
 let isAutoRotating = true;
-// Kaleido Rotation State
-const kaleidoState = {
-    angle: 0,
-    targetAngle: 0,
-    isTurning: false,
-    timer: 0,
-    lastTime: 0
-};
+let autoRotateAngle = 0;
 
 // --- Ends Global State ---
 
@@ -121,60 +114,52 @@ let gravityScale = 1;
 let airFriction = 0.05;
 let wallRestitution = 0.6;
 let gemRestitution = 0.6;
-let rotationSpeedScale = 1.0;
 
 let globalScale = 1.0;
 
 // UI Listeners for Physics
-const bindSlider = (id, targetVar, displayId, callback) => {
-    const el = document.getElementById(id);
-    if (el) {
-        el.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            if (displayId) document.getElementById(displayId).textContent = val.toFixed(1);
-            if (callback) callback(val);
-        });
-    }
-};
-
-bindSlider('gravityControl', null, 'val-gravity', (v) => gravityScale = v);
-bindSlider('rotateSpeedControl', null, 'val-rotate-speed', (v) => rotationSpeedScale = v);
-bindSlider('scaleControl', null, 'val-scale', (v) => {
-    const ratio = v / globalScale;
-    globalScale = v;
+document.getElementById('gravityControl').addEventListener('input', (e) => {
+    gravityScale = parseFloat(e.target.value);
+    document.getElementById('val-gravity').textContent = gravityScale;
+});
+document.getElementById('frictionControl').addEventListener('input', (e) => {
+    airFriction = parseFloat(e.target.value);
+    document.getElementById('val-friction').textContent = airFriction;
     Composite.allBodies(engine.world).forEach(body => {
-        if (!body.isStatic && body.label !== 'gem_supply') Body.scale(body, ratio, ratio);
+        if (!body.isStatic) body.frictionAir = airFriction;
     });
 });
-bindSlider('frictionControl', null, 'val-friction', (v) => {
-    airFriction = v;
-    Composite.allBodies(engine.world).forEach(body => { if (!body.isStatic) body.frictionAir = airFriction; });
-});
-bindSlider('restitutionControl', null, 'val-restitution', (v) => {
-    wallRestitution = v;
-    Composite.allBodies(engine.world).forEach(body => { if (body.label === 'wall') body.restitution = wallRestitution; });
-});
-bindSlider('gemRestitutionControl', null, 'val-gem-restitution', (v) => {
-    gemRestitution = v;
-    Composite.allBodies(engine.world).forEach(body => { if (!body.isStatic && body.label !== 'gem_supply') body.restitution = gemRestitution; });
-});
-
-
-// --- Fractal Mode Settings ---
-let fractalZoomSpeed = 1.02;
-let fractalQuality = 0.25;
-let fractalType = 'mandelbrot';
-
-bindSlider('zoomSpeedControl', null, 'val-zoom-speed', (v) => fractalZoomSpeed = v);
-bindSlider('qualityControl', null, 'val-quality', (v) => fractalQuality = v);
-
-const fracTypeEl = document.getElementById('fractalTypeControl');
-if (fracTypeEl) {
-    fracTypeEl.addEventListener('change', (e) => {
-        fractalType = e.target.value;
-        if (fractalType === 'mandelbrot') mandelbrotState.scale = 1.0;
+document.getElementById('restitutionControl').addEventListener('input', (e) => {
+    wallRestitution = parseFloat(e.target.value);
+    document.getElementById('val-restitution').textContent = wallRestitution;
+    Composite.allBodies(engine.world).forEach(body => {
+        if (body.label === 'wall') {
+            body.restitution = wallRestitution;
+        }
     });
-}
+});
+document.getElementById('gemRestitutionControl').addEventListener('input', (e) => {
+    gemRestitution = parseFloat(e.target.value);
+    document.getElementById('val-gem-restitution').textContent = gemRestitution;
+    Composite.allBodies(engine.world).forEach(body => {
+        if (!body.isStatic && body.label !== 'gem_supply') {
+            body.restitution = gemRestitution;
+        }
+    });
+});
+document.getElementById('scaleControl').addEventListener('input', (e) => {
+    const newScale = parseFloat(e.target.value);
+    document.getElementById('val-scale').textContent = newScale;
+    const ratio = newScale / globalScale;
+    globalScale = newScale;
+
+    // Rescale all dynamic bodies
+    Composite.allBodies(engine.world).forEach(body => {
+        if (!body.isStatic && body.label !== 'gem_supply') {
+            Body.scale(body, ratio, ratio);
+        }
+    });
+});
 
 const autoRotateCheckbox = document.getElementById('autoRotateControl');
 if (autoRotateCheckbox) {
@@ -193,7 +178,6 @@ function resize() {
     renderHeight = window.innerHeight;
     canvas.width = renderWidth;
     canvas.height = renderHeight;
-    // No render controller options update needed
 }
 window.addEventListener('resize', resize);
 resize();
@@ -216,12 +200,7 @@ function createWalls() {
         walls.push(Bodies.rectangle(x, y, segmentWidth * 1.2, wallThickness, {
             isStatic: true,
             angle: angle + Math.PI / 2,
-            render: {
-                visible: true, // Show collision detection (User Request)
-                fillStyle: 'rgba(255, 255, 255, 0.1)',
-                strokeStyle: 'rgba(255, 255, 255, 0.3)',
-                lineWidth: 1
-            },
+            render: { visible: false },
             label: 'wall',
             friction: 0.5,
             restitution: wallRestitution
@@ -233,7 +212,9 @@ Composite.add(engine.world, createWalls());
 
 // Supply Slots
 const supplySlots = [];
-const slotBaseY = renderHeight - CONFIG.supplyBoxHeight + 20;
+// Reduced margin as requested - essentially just enough for the box
+const safeBottomMargin = 0;
+const slotBaseY = renderHeight - CONFIG.supplyBoxHeight + 20; // Slight offset
 const slotWidth = renderWidth / CONFIG.slotCountCols;
 const slotRowHeight = CONFIG.supplyBoxHeight / CONFIG.slotRows;
 
@@ -245,14 +226,20 @@ for (let row = 0; row < CONFIG.slotRows; row++) {
 
 // Generate Gemstones
 function createGem(x, y, isStaticInBox = false) {
-    // Randomize size more (User Request) -> Reverted to smaller variation
-    const baseSize = 15 + Math.random() * 10; // 15 to 25 range
+    const baseSize = 15 + Math.random() * 10; // 15-25
     let size = baseSize * (isStaticInBox ? 1.0 : globalScale);
 
-    const sides = Math.floor(3 + Math.random() * 5);
+    const sides = Math.floor(3 + Math.random() * 5); // 3-7
     let color = CONFIG.gemColors[Math.floor(Math.random() * CONFIG.gemColors.length)];
 
+    // Strict Probabilities (User Request)
+    // Both (Super Rare): 0.025% (0.00025)
+    // Eye: 0.5% (0.005)
+    // Glowing: 5.0% (0.05)
+
     const rand = Math.random();
+
+    // Strict buckets
     const isSuperRare = rand < 0.00025;
     const isEyeOnly = rand >= 0.00025 && rand < 0.00525;
     const isGlowingOnly = rand >= 0.00525 && rand < 0.05525;
@@ -260,31 +247,55 @@ function createGem(x, y, isStaticInBox = false) {
     const isGlowing = isSuperRare || isGlowingOnly;
     const isEye = isSuperRare || isEyeOnly;
 
+    // Size Multiplier for Super Rare
+    if (isSuperRare) {
+        // We need to recalculate size or just multiply basic size?
+        // Let's multiply the final size variable if possible, but 'const size' is already defined.
+        // Since 'size' is const, we might need to change it to let or multiply in the Bodies.polygon call.
+        // Better to change 'const size' to 'let size' or apply multiplier.
+    }
+    // Actually, 'size' is defined at the top of the function. I should insert this check earlier or adjust how bodies are created.
+    // Let's maintain the strict structure. 
+
+    // REDEFINITION FIX:
+    // I will change 'const size' to 'let size' in the next block, but wait, I can just use a multiplier variable.
     let finalSize = size;
     if (isSuperRare) finalSize *= 2;
 
+    // Eye colors
     if (isEyeOnly) {
         color = CONFIG.gemColors[Math.floor(Math.random() * CONFIG.gemColors.length)];
     }
+    // REMOVED: Super Rare Gold Override. Now uses random color + gold aura.
 
     const plug = {};
     plug.color = color;
     plug.complementary = getComplementaryColor(color);
 
-    if (isGlowing) plug.type = 'glowing';
+    if (isGlowing) {
+        plug.type = 'glowing';
+    }
 
     if (isEye) {
         if (!plug.type) plug.type = 'eye';
         if (isSuperRare) plug.type = 'super_eye';
+
         plug.eyeOffset = Math.random() * 1000;
         plug.blinkTimer = 0;
         plug.noiseOffset = Math.random() * 1000;
+
+        // Personality
         const personalities = ['curious', 'shy', 'aggressive', 'lazy', 'hyper'];
+        // Weights could be added, but equal chance is fine for now
         plug.personality = Common.choose(personalities);
+
+        // State
         plug.emotion = 'normal';
         plug.stuckCounter = 0;
         plug.sleepCounter = 0;
         plug.emotionTimer = 0;
+
+        // Fascination State
         plug.fascinatedTimer = 0;
         plug.cooldownTimer = 0;
         plug.isFascinated = false;
@@ -309,7 +320,7 @@ function createGem(x, y, isStaticInBox = false) {
     const body = Bodies.polygon(x, y, sides, finalSize, bodyOptions);
 
     if (isGlowing || isEye) {
-        Body.setDensity(body, body.density * 5);
+        Body.setDensity(body, body.density * 5); // Heavy (Glowing OR Eye)
     }
 
     if (isStaticInBox) {
@@ -325,7 +336,9 @@ function checkSupplyAndCleanup() {
     Composite.allBodies(engine.world).forEach(body => {
         if (body.isStatic) return;
         const distFromCenter = Vector.magnitude(Vector.sub(body.position, boundaryCenter));
+        // Expanded supply zone check
         const isInSupplyZone = body.position.y > renderHeight - CONFIG.supplyBoxHeight - 50;
+
         if (distFromCenter > boundaryRadius * 1.5 && !isInSupplyZone) {
             if (body.position.x < -100 || body.position.x > renderWidth + 100 ||
                 body.position.y < -100 || body.position.y > renderHeight + 100) {
@@ -342,6 +355,7 @@ function checkSupplyAndCleanup() {
                 if (body.label === 'gem_supply') {
                     if (!body.isStatic) {
                         body.label = 'gem';
+                        // Apply global scale when leaving box
                         Body.scale(body, globalScale, globalScale);
                     }
                 }
@@ -356,21 +370,25 @@ function checkSupplyAndCleanup() {
     });
 }
 
-// Collision Event
+// Collision Event for Eating
 Events.on(engine, 'collisionStart', (event) => {
     const pairs = event.pairs;
+
     for (let i = 0; i < pairs.length; i++) {
         const bodyA = pairs[i].bodyA;
         const bodyB = pairs[i].bodyB;
+
         if (bodyA.isStatic || bodyB.isStatic) continue;
         if (bodyA.label === 'wall' || bodyB.label === 'wall') continue;
 
         const typeA = bodyA.plugin && (bodyA.plugin.type === 'eye' || bodyA.plugin.type === 'super_eye');
         const typeB = bodyB.plugin && (bodyB.plugin.type === 'eye' || bodyB.plugin.type === 'super_eye');
+
         if (!typeA && !typeB) continue;
 
         let eater = null;
         let eaten = null;
+
         if (typeA && !typeB && bodyA.plugin.color === bodyB.plugin.color) {
             eater = bodyA; eaten = bodyB;
         } else if (typeB && !typeA && bodyB.plugin.color === bodyA.plugin.color) {
@@ -378,26 +396,16 @@ Events.on(engine, 'collisionStart', (event) => {
         }
 
         if (eater && eaten) {
-            // Sleep check: Sleeping eyes cannot eat
-            if (eater.plugin.emotion === 'sleep') return;
-
             // Eat!
-            // Grow Eater: 50% of eaten area (User Request)
+            // Grow Eater: 1/10th of eaten area
             const areaEaten = eaten.area;
             const areaEater = eater.area;
-            const growthFactor = Math.sqrt(1 + (areaEaten * 0.5) / areaEater);
+            const growthFactor = Math.sqrt(1 + (areaEaten * 0.1) / areaEater);
 
             // Limit max size
-            if (eater.area < 50000) {
+            if (eater.area < 30000) {
                 Body.scale(eater, growthFactor, growthFactor);
                 eater.mass *= growthFactor;
-            }
-
-            // Power-up: Eat Glowing -> Surprised + 1 min Glow
-            if (eaten.plugin && eaten.plugin.type === 'glowing') {
-                eater.plugin.emotion = 'surprised';
-                eater.plugin.emotionTimer = 120; // 2 seconds surprise
-                eater.plugin.glowTimer = 600; // 10 seconds glow
             }
 
             spawnParticle(eaten.position.x, eaten.position.y, eaten.plugin.color);
@@ -408,208 +416,74 @@ Events.on(engine, 'collisionStart', (event) => {
     }
 });
 
-// Physics Sub-modes
-let physicsSubMode = 'gravity'; // 'gravity', 'float', 'eye'
 
-function calculateInitialCount(densityScale = 0.5) {
-    const cylinderArea = Math.PI * boundaryRadius * boundaryRadius;
-    const avgGemRadius = 20;
-    const avgGemArea = Math.PI * avgGemRadius * avgGemRadius;
-    const targetCount = Math.floor((cylinderArea * densityScale) / avgGemArea);
-    return Math.min(200, Math.max(5, targetCount)); // Clamp
+// Initial Objects
+for (let i = 0; i < CONFIG.initialBeadCount; i++) {
+    const gem = createGem(boundaryCenter.x + Common.random(-50, 50), boundaryCenter.y + Common.random(-50, 50), false);
+    Composite.add(engine.world, gem);
 }
-
-function initPhysicsWorld() {
-    // Clear existing non-static bodies (walls/supply box stay? No, walls stay, supply box slots need refresh)
-    // Actually, simple way: remove all gems/eyes, keep walls.
-    Composite.allBodies(engine.world).forEach(b => {
-        if (b.label !== 'wall') Composite.remove(engine.world, b);
-    });
-    // Clear particles
-    particles.length = 0;
-
-    // Clear supply slots
-    supplySlots.forEach(s => s.occupiedBy = null);
-
-    // Settings based on Mode
-    if (physicsSubMode === 'gravity') {
-        gravityScale = 1.0;
-        airFriction = 0.05;
-        rotationSpeedScale = 1.0;
-        wallRestitution = 0.6;
-        gemRestitution = 0.6;
-        isAutoRotating = true;
-        CONFIG.initialBeadCount = calculateInitialCount(0.5); // Normal ~50%
-    } else if (physicsSubMode === 'float') {
-        gravityScale = 0;
-        airFriction = 0; // Zero friction
-        rotationSpeedScale = 0; // Stop rotation
-        isAutoRotating = false; // Disable gravity rotation
-        wallRestitution = 1.0;
-        gemRestitution = 1.0;
-        CONFIG.initialBeadCount = calculateInitialCount(0.125); // 1/8th of normal (User Request: "Halve again")
-    } else if (physicsSubMode === 'eye') {
-        gravityScale = 1.0;
-        airFriction = 0.05;
-        rotationSpeedScale = 1.0;
-        wallRestitution = 0.6;
-        gemRestitution = 0.6;
-        isAutoRotating = true;
-        CONFIG.initialBeadCount = calculateInitialCount(0.5);
-    }
-
-    // Update Sliders/Checkbox to match internal state
-    const updateUI = (id, val, isCheckbox = false) => {
-        const el = document.getElementById(id);
-        if (el) {
-            if (isCheckbox) {
-                el.checked = val;
-                el.dispatchEvent(new Event('change')); // Trigger listener
-            } else {
-                el.value = val;
-                el.dispatchEvent(new Event('input')); // Trigger listener
-            }
-        }
-    }
-
-    updateUI('gravityControl', gravityScale);
-    updateUI('frictionControl', airFriction);
-    updateUI('restitutionControl', wallRestitution);
-    updateUI('gemRestitutionControl', gemRestitution);
-    updateUI('autoRotateControl', isAutoRotating, true);
-
-    // Explicitly set global vars again just in case listeners are weird
-    // (Listeners update globals, so dispatchEvent is enough, but purely being safe)
-    // gravityScale, airFriction etc are updated by listeners.
-
-    // Spawn Objects
-    let eyeSpawned = false;
-    for (let i = 0; i < CONFIG.initialBeadCount; i++) {
-        const gem = createGem(boundaryCenter.x + Common.random(-50, 50), boundaryCenter.y + Common.random(-50, 50), false);
-
-        // Eye Mode Enforcement
-        if (physicsSubMode === 'eye' && !eyeSpawned && i === CONFIG.initialBeadCount - 1) {
-            // Force last one to be eye if none spawned? 
-            // Better: Force specific property mod
-            if (!gem.plugin.type || gem.plugin.type !== 'eye') {
-                // Convert to eye
-                gem.plugin.type = 'eye';
-                gem.plugin.personality = 'curious';
-                // ... other init ...
-                // Simplified: Since createGem does valid init, we might just hack it or trust probability?
-                // User said: "1 guaranteed eye".
-            }
-        }
-
-        // Zero-G Specific Properties
-        if (physicsSubMode === 'float') {
-            gem.friction = 0;
-            gem.frictionStatic = 0;
-            gem.restitution = 1.0;
-            Body.setVelocity(gem, {
-                x: (Math.random() - 0.5) * 15,
-                y: (Math.random() - 0.5) * 15
-            });
-        }
-
-        Composite.add(engine.world, gem);
-    }
-
-    // Explicit Eye enforcement helper if needed
-    if (physicsSubMode === 'eye') {
-        const bodies = Composite.allBodies(engine.world).filter(b => !b.isStatic);
-        const hasEye = bodies.some(b => b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye'));
-        if (!hasEye && bodies.length > 0) {
-            const b = bodies[Math.floor(Math.random() * bodies.length)];
-            b.plugin.type = 'eye';
-            b.plugin.personality = 'curious'; // Reset to standard eye defaults
-            b.plugin.emotion = 'normal';
-            // Scale density logic from createGem?
-        }
-    }
-}
-
-// Global exposure
-window.setPhysicsSubmode = function (mode) {
-    physicsSubMode = mode;
-    console.log("Switching to " + mode);
-    initPhysicsWorld();
-
-    // Update active button state
-    document.querySelectorAll('.submode-btn').forEach(btn => btn.classList.remove('active'));
-    const btn = document.getElementById('btn-mode-' + mode);
-    if (btn) btn.classList.add('active');
-};
-
-// Initial Start
-// initPhysicsWorld(); // Start logic calls this? Or just replace the loop.
-// The code had a loop at line 412. I'll replace it with initPhysicsWorld() call.
-
-initPhysicsWorld();
 
 // Gravity & Permission
 const debugInfo = document.getElementById('debug-info');
+
 function handleOrientation(event) {
     if (isAutoRotating) return;
+
     if (debugInfo) {
-        if (event.alpha !== null) debugInfo.textContent = `a:${event.alpha.toFixed(1)} b:${event.beta.toFixed(1)} g:${event.gamma.toFixed(1)}`;
+        if (event.alpha !== null) {
+            debugInfo.textContent = `a:${event.alpha.toFixed(1)} b:${event.beta.toFixed(1)} g:${event.gamma.toFixed(1)}`;
+        }
         debugInfo.style.display = 'block';
     }
+
     if (event.gamma === null || event.beta === null) return;
+
     isSensorActive = true;
+
     const rad = Math.PI / 180;
-    const rawX = Math.sin(event.gamma * rad);
-    const rawY = Math.sin(event.beta * rad);
-
-    // Account for screen orientation
-    const orientation = (window.screen && window.screen.orientation && window.screen.orientation.angle) || window.orientation || 0;
-    const angle = orientation * rad;
-
-    // Rotate vector by angle (screen rotation)
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-
-    // Rotate (x, y) by angle
-    const x = rawX * cos - rawY * sin;
-    const y = rawX * sin + rawY * cos;
+    const x = Math.sin(event.gamma * rad);
+    const y = Math.sin(event.beta * rad);
 
     engine.world.gravity.x = x * gravityScale;
     engine.world.gravity.y = y * gravityScale;
-
-    // Update Dashboard
-    const dashboard = document.getElementById('sensor-dashboard');
-    if (dashboard) {
-        dashboard.style.display = 'block';
-        document.getElementById('val-alpha').textContent = (event.alpha || 0).toFixed(1);
-        document.getElementById('val-beta').textContent = (event.beta || 0).toFixed(1);
-        document.getElementById('val-gamma').textContent = (event.gamma || 0).toFixed(1);
-    }
 }
 
-// Sensor Initialization on First Interaction
-const initSensors = async () => {
-    if (!document.fullscreenElement) {
-        try { await document.documentElement.requestFullscreen(); } catch (e) { }
+// Permission Request (iOS 13+)
+const startButton = document.getElementById('startButton');
+startButton.addEventListener('click', async () => {
+    // Check for Secure Context
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        alert("Warning: Sensors might require HTTPS.");
     }
+
+    // Fullscreen
+    if (!document.fullscreenElement) {
+        try {
+            await document.documentElement.requestFullscreen();
+        } catch (e) { console.log("Fullscreen denied", e); }
+    }
+
+    // iOS Permission
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
             const response = await DeviceOrientationEvent.requestPermission();
             if (response === 'granted') {
                 window.addEventListener('deviceorientation', handleOrientation);
+                document.getElementById('instruction-overlay').classList.add('hidden');
+            } else {
+                alert('Permission denied (iOS).');
             }
         } catch (e) {
             console.error(e);
+            alert('Error: ' + e);
         }
     } else {
+        // Non-iOS
         window.addEventListener('deviceorientation', handleOrientation);
+        document.getElementById('instruction-overlay').classList.add('hidden');
     }
-    // Remove listeners after first successful triggering attempt
-    window.removeEventListener('click', initSensors);
-    window.removeEventListener('touchstart', initSensors);
-};
+});
 
-window.addEventListener('click', initSensors);
-window.addEventListener('touchstart', initSensors);
 
 // Mouse Gravity
 if (!('ontouchstart' in window)) {
@@ -621,108 +495,27 @@ if (!('ontouchstart' in window)) {
     });
 }
 
-// Dragging & Eraser
+// Dragging
 const mouse = Mouse.create(canvas);
 const mouseConstraint = MouseConstraint.create(engine, {
     mouse: mouse,
     constraint: { stiffness: 0.2, render: { visible: false } }
 });
-
-// Eraser State
-let isEraserActive = false;
-window.toggleEraser = function () {
-    isEraserActive = !isEraserActive;
-    const btn = document.getElementById('btn-eraser');
-    if (btn) {
-        if (isEraserActive) {
-            btn.style.background = "cyan";
-            btn.style.color = "black";
-            btn.style.boxShadow = "0 0 15px cyan";
-            btn.textContent = "Eraser Active";
-        } else {
-            btn.style.background = "rgba(0,0,0,0.3)";
-            btn.style.color = "cyan";
-            btn.style.boxShadow = "none";
-            btn.textContent = "Eraser Mode";
-        }
-    }
-
-    // Fix persistent scared state: Reset emotions when turning OFF
-    if (!isEraserActive) {
-        Composite.allBodies(engine.world).forEach(b => {
-            if (b.plugin && b.plugin.emotion === 'scared') {
-                b.plugin.emotion = 'normal';
-            }
-        });
-    }
-};
-
-// Eraser Logic Function
-// Eraser Logic Function
-function handleEraser(x, y) {
-    if (!isEraserActive) return;
-
-    // Query bodies at cursor
-    const bodies = Composite.allBodies(engine.world);
-    const affected = Matter.Query.point(bodies, { x: x, y: y });
-
-    affected.forEach(body => {
-        // Allow erasing everything except walls
-        if (body.label === 'wall') return;
-
-        const isEye = body.plugin && (body.plugin.type === 'eye' || body.plugin.type === 'super_eye');
-
-        // Check if it's in a supply slot (static)
-        const slot = supplySlots.find(s => s.occupiedBy === body);
-
-        // If it is in a supply slot -> ERASE IT (User Request: "Erase eyes in box")
-        if (slot) {
-            spawnParticle(body.position.x, body.position.y, body.render.fillStyle);
-            Composite.remove(engine.world, body);
-            slot.occupiedBy = null; // Respawn trigger
-            return;
-        }
-
-        if (isEye) {
-            // EYES (Active in field): Scared & Flee
-            body.plugin.emotion = 'scared';
-            body.plugin.emotionTimer = 60; // 1 sec scare
-
-            // Flee Force
-            const forceDir = Vector.sub(body.position, { x: x, y: y });
-            const dist = Vector.magnitude(forceDir);
-            if (dist > 0) {
-                // Strong flee force
-                const force = Vector.mult(Vector.normalise(forceDir), 0.05 * body.mass);
-                Body.applyForce(body, body.position, force);
-            }
-
-        } else {
-            // NORMAL GEMS: Delete
-            spawnParticle(body.position.x, body.position.y, body.render.fillStyle);
-            Composite.remove(engine.world, body);
-        }
-    });
-}
-
-// Intercept Mouse events for Eraser
-Events.on(mouseConstraint, 'mousemove', (event) => {
-    if (isEraserActive) {
-        handleEraser(event.mouse.position.x, event.mouse.position.y);
-    }
-});
-
 Events.on(mouseConstraint, 'startdrag', (event) => {
-    if (isEraserActive) return; // Disable drag if eraser is on
-
     if (event.body.label === 'gem_supply') {
         Matter.Body.setStatic(event.body, false);
         event.body.label = 'gem_transition';
     }
-    if (event.body.plugin) event.body.plugin.emotion = 'scared';
+    // Scared when grabbed
+    if (event.body.plugin) {
+        event.body.plugin.emotion = 'scared';
+    }
 });
 Events.on(mouseConstraint, 'enddrag', (event) => {
-    if (event.body.plugin) event.body.plugin.emotion = 'normal';
+    // Return to normal if released
+    if (event.body.plugin) {
+        event.body.plugin.emotion = 'normal';
+    }
 });
 Composite.add(engine.world, mouseConstraint);
 
@@ -748,10 +541,14 @@ async function setupAudio() {
         analyser.fftSize = 256;
         const bufferLength = analyser.frequencyBinCount;
         dataArray = new Uint8Array(bufferLength);
+
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const source = audioContext.createMediaStreamSource(stream);
         source.connect(analyser);
+        // Note: Do NOT connect to destination (speakers) to avoid feedback loop!
+
         isAudioInitialized = true;
+        console.log("Audio Initialized");
     } catch (err) {
         console.error("Audio Setup Failed", err);
         alert("Microphone access needed for Audio Mode");
@@ -766,75 +563,21 @@ function drawPhysicsMode(timestamp, ctx) {
     // 0. Supply Logic
     checkSupplyAndCleanup();
 
-    // Zero-G Thermal Agitation (Keep things moving)
-    if (physicsSubMode === 'float') {
-        const bodies = Composite.allBodies(engine.world);
-        bodies.forEach(body => {
-            if (body.isStatic) return;
-            // Prevent stalling
-            if (body.speed < 1.0) {
-                const force = 0.0005 * body.mass;
-                Body.applyForce(body, body.position, {
-                    x: (Math.random() - 0.5) * force,
-                    y: (Math.random() - 0.5) * force
-                });
-            }
-            // Ensure no friction/damping (in case it reset)
-            body.friction = 0;
-            body.frictionStatic = 0;
-            body.frictionAir = 0;
-            body.restitution = 1.0;
-        });
-    }
-
-    // Auto Rotation Logic (Step-wise / "Kakukaku")
+    // Auto Rotation Logic
     if (isAutoRotating) {
-        // Init time
-        if (!kaleidoState.lastTime) kaleidoState.lastTime = timestamp;
-        const dt = timestamp - kaleidoState.lastTime;
-        kaleidoState.lastTime = timestamp;
+        const speedVar = Math.sin(timestamp * 0.001) * 0.005 + 0.01;
+        autoRotateAngle += speedVar;
+        const pulse = 1.0 + Math.sin(timestamp * 0.002) * 0.5;
+        engine.world.gravity.x = Math.sin(autoRotateAngle) * gravityScale * pulse;
+        engine.world.gravity.y = Math.cos(autoRotateAngle) * gravityScale * pulse;
 
-        if (rotationSpeedScale > 0) {
-            if (kaleidoState.isTurning) {
-                // TURN PHASE
-                const turnSpeed = 0.002 * dt * (1 + rotationSpeedScale * 0.5); // Turn speed varies slightly with slider
-
-                // Move towards target
-                if (kaleidoState.angle < kaleidoState.targetAngle) {
-                    kaleidoState.angle += turnSpeed;
-                    if (kaleidoState.angle >= kaleidoState.targetAngle) {
-                        kaleidoState.angle = kaleidoState.targetAngle;
-                        kaleidoState.isTurning = false;
-                        kaleidoState.timer = 0; // Reset rest timer
-                    }
-                }
-            } else {
-                // REST PHASE
-                kaleidoState.timer += dt;
-
-                // Rest duration decreases as speed increases
-                // Scale 0.1 -> 5000ms, Scale 5.0 -> 200ms
-                const restDuration = 3000 / (rotationSpeedScale * 1.5 + 0.1);
-
-                if (kaleidoState.timer > restDuration) {
-                    kaleidoState.isTurning = true;
-                    kaleidoState.targetAngle += Math.PI / 3; // Turn 60 degrees
-                }
-            }
-        }
-
-        const pulse = 1.0 + Math.sin(timestamp * 0.002) * 0.1; // Reduced pulse
-        engine.world.gravity.x = Math.sin(kaleidoState.angle) * gravityScale * pulse;
-        engine.world.gravity.y = Math.cos(kaleidoState.angle) * gravityScale * pulse;
-
-        // Turbulence (Gated by Gravity Scale) - Only during turn? Or always?
-        // Let's keep it but maybe enhance it during turn to shake things up
-        if (kaleidoState.isTurning && gravityScale > 0.1 && Math.random() < 0.1) {
+        // Turbulence (Gated by Gravity Scale)
+        if (gravityScale > 0.1 && Math.random() < 0.05) {
             Composite.allBodies(engine.world).forEach(b => {
                 if (!b.isStatic && Math.random() < 0.3) {
                     Body.applyForce(b, b.position, {
-                        x: (Math.random() - 0.5) * 0.02 * b.mass * gravityScale,
-                        y: (Math.random() - 0.5) * 0.02 * b.mass * gravityScale
+                        x: (Math.random() - 0.5) * 0.01 * b.mass * gravityScale,
+                        y: (Math.random() - 0.5) * 0.01 * b.mass * gravityScale
                     });
                 }
             });
@@ -969,11 +712,6 @@ function drawPhysicsMode(timestamp, ctx) {
             }
 
 
-            // Glow Timer Logic
-            if (b.plugin.glowTimer > 0) {
-                b.plugin.glowTimer--;
-            }
-
             // 1. Stuck Check -> Angular
             const speed = b.speed;
             if (speed < 0.5) {
@@ -989,10 +727,7 @@ function drawPhysicsMode(timestamp, ctx) {
             }
 
             // State Counters
-            if (b.plugin.emotion === 'surprised') {
-                b.plugin.emotionTimer--;
-                if (b.plugin.emotionTimer <= 0) b.plugin.emotion = 'normal';
-            } else if (b.plugin.emotion === 'angry') {
+            if (b.plugin.emotion === 'angry') {
                 b.plugin.emotionTimer--;
                 if (b.plugin.emotionTimer <= 0) {
                     b.plugin.emotion = 'tired';
@@ -1005,13 +740,9 @@ function drawPhysicsMode(timestamp, ctx) {
                     b.plugin.stuckCounter = 0;
                 }
             } else if (b.plugin.emotion === 'scared') {
-                b.plugin.emotionTimer--;
-                if (b.plugin.emotionTimer <= 0) b.plugin.emotion = 'normal';
-
-                const forceMag = 0.01 * b.mass;
                 Body.applyForce(b, b.position, {
-                    x: (Math.random() - 0.5) * forceMag,
-                    y: (Math.random() - 0.5) * forceMag
+                    x: (Math.random() - 0.5) * 0.01 * b.mass,
+                    y: (Math.random() - 0.5) * 0.01 * b.mass
                 });
             }
 
@@ -1031,10 +762,7 @@ function drawPhysicsMode(timestamp, ctx) {
             }
 
             // Action based on emotion
-            if (b.plugin.emotion === 'sleep') {
-                // DO NOTHING (Strict Sleep)
-                b.angularVelocity *= 0.9; // Slow rotation logic
-            } else if (b.plugin.emotion === 'angry') {
+            if (b.plugin.emotion === 'angry') {
                 if (Math.random() < 0.1) {
                     if (Math.random() < 0.3) spawnParticle(b.position.x, b.position.y, 'rgba(255,255,255,0.5)');
                     Composite.allBodies(engine.world).forEach(other => {
@@ -1050,6 +778,8 @@ function drawPhysicsMode(timestamp, ctx) {
                     });
                     Body.applyForce(b, b.position, { x: (Math.random() - 0.5) * 0.02, y: (Math.random() - 0.5) * 0.02 });
                 }
+            } else if (b.plugin.emotion === 'sleep') {
+                // Drift
             } else {
                 // --- Organic Swim Logic ---
                 let targetAngle = 0;
@@ -1077,8 +807,7 @@ function drawPhysicsMode(timestamp, ctx) {
 
                 const swimCycle = Math.sin(timestamp * 0.005 + b.plugin.noiseOffset);
                 if (swimCycle > 0) {
-                    // Increased kick strength for freer movement (User Request) - Boosted significantly
-                    let kickStrength = 0.0015 * b.mass * (globalScale ** 1.5); // 5x original
+                    let kickStrength = 0.0003 * b.mass * (globalScale ** 1.5);
 
                     // Personality Speed Multipliers
                     if (b.plugin.personality === 'lazy') kickStrength *= 0.5;
@@ -1102,11 +831,12 @@ function drawPhysicsMode(timestamp, ctx) {
             }
         }
 
-        // Glow Particles & Power-up Aura
-        if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0) && !b.isStatic) {
+        // Glow Particles
+        if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye') && !b.isStatic) {
 
-            // Super Saiyan or Power-up Effect
-            if (b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0) {
+            // Super Saiyan Effect
+            if (b.plugin.type === 'super_eye') {
+                // Intense rising particles
                 // Intense rising particles
                 for (let i = 0; i < 3; i++) { // Multiple per frame
                     const hue = (timestamp * 0.5 + i * 30 + Math.random() * 60) % 360;
@@ -1168,7 +898,7 @@ function drawPhysicsMode(timestamp, ctx) {
 
         // Main Fill
         if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
-            if (b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0) {
+            if (b.plugin.type === 'super_eye') {
                 // AURA
                 const hue = (timestamp * 0.2) % 360; // Slow rainbow cycle
                 ctx.save();
@@ -1254,20 +984,12 @@ function drawPhysicsMode(timestamp, ctx) {
                 ctx.lineTo(center.x + radius, center.y);
                 ctx.stroke();
             } else if (b.plugin.emotion === 'scared') {
-                // Scared Face: Cyan tint, SINGLE trembling pupil (Cyclops)
-                ctx.fillStyle = '#AFEEEE'; // PaleTurquoise (Darker than LightCyan)
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 3 * globalScale;
                 ctx.beginPath();
-                ctx.arc(center.x, center.y, radius, 0, 2 * Math.PI);
-                ctx.fill();
-
-                // Trembling Pupil
-                const trembleX = (Math.random() - 0.5) * 6 * globalScale;
-                const trembleY = (Math.random() - 0.5) * 6 * globalScale;
-
-                ctx.fillStyle = 'black';
-                ctx.beginPath();
-                ctx.arc(center.x + trembleX, center.y + trembleY, radius * 0.4, 0, 2 * Math.PI); // Big dilated pupil
-                ctx.fill();
+                ctx.moveTo(center.x - radius, center.y);
+                ctx.lineTo(center.x + radius, center.y);
+                ctx.stroke();
             } else if (b.plugin.emotion === 'tired') {
                 ctx.fillStyle = 'white';
                 ctx.beginPath();
@@ -1281,23 +1003,6 @@ function drawPhysicsMode(timestamp, ctx) {
                 ctx.beginPath();
                 ctx.arc(center.x, center.y + radius * 0.3, radius * 0.4, 0, 2 * Math.PI);
                 ctx.fill();
-            } else if (b.plugin.emotion === 'surprised') {
-                // Wide Open Eyes
-                ctx.fillStyle = 'white';
-                ctx.beginPath();
-                ctx.arc(center.x, center.y, radius * 1.8, 0, 2 * Math.PI); // Extra big
-                ctx.fill();
-
-                // Tiny pupils
-                ctx.fillStyle = 'black';
-                ctx.beginPath();
-                ctx.arc(center.x, center.y, radius * 0.2, 0, 2 * Math.PI);
-                ctx.fill();
-
-                ctx.fillStyle = '#FF4500';
-                ctx.font = `bold ${20 * globalScale}px monospace`;
-                ctx.textAlign = 'center';
-                ctx.fillText('!?', center.x, center.y - 30 * globalScale);
             } else {
                 let isBlinking = false;
                 if (b.plugin.emotion === 'normal' && !b.plugin.isFascinated) {
@@ -1397,48 +1102,78 @@ function drawPhysicsMode(timestamp, ctx) {
 function drawAudioVisualizer(timestamp, ctx) {
     if (!isAudioInitialized) {
         ctx.fillStyle = 'white';
+        ctx.font = '20px sans-serif';
         ctx.textAlign = 'center';
-        ctx.font = '20px monospace';
-        ctx.fillText("Click 'Audio' to Initialize Microphone", renderWidth / 2, renderHeight / 2);
+        ctx.fillText("Click 'Audio' button to activate microphone", renderWidth / 2, renderHeight / 2);
         return;
     }
+
     analyser.getByteFrequencyData(dataArray);
+
+    // Radial Visualizer
     const centerX = renderWidth / 2;
     const centerY = renderHeight / 2;
-    const maxRadius = Math.min(renderWidth, renderHeight) * 0.4;
-    const barCount = 100;
+    const maxRadius = Math.min(renderWidth, renderHeight) * 0.45;
+
+    // Background Pulse (Bass)
+    const bassAvg = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+    const pulse = bassAvg / 255;
+
+    // Beat flash
+    if (pulse > 0.8) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${(pulse - 0.8) * 0.2})`;
+        ctx.fillRect(0, 0, renderWidth, renderHeight);
+    }
+
+    ctx.fillStyle = `rgba(20, 0, 50, ${pulse * 0.2})`;
+    ctx.fillRect(0, 0, renderWidth, renderHeight);
+
+    // 1. Outer Ring (Mids/Highs)
+    const barCount = 120;
     const angleStep = (Math.PI * 2) / barCount;
-    const bass = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
-    const pulse = bass / 255;
     const radiusStart = 60 * globalScale + (pulse * 20);
+
     const hueBase = (timestamp * 0.05) % 360;
+
     ctx.lineWidth = 4 * globalScale;
     ctx.lineCap = 'round';
+
     for (let i = 0; i < barCount; i++) {
+        // Map bar index to frequency index
         const dataIndex = Math.floor((i / barCount) * (dataArray.length * 0.8));
         const value = dataArray[dataIndex];
         const barHeight = (value / 255) * (maxRadius - radiusStart) * globalScale;
+
         const angle = i * angleStep + (timestamp * 0.0005);
+
         ctx.strokeStyle = `hsl(${(hueBase + i) % 360}, 80%, 60%)`;
+
         const x1 = centerX + Math.cos(angle) * radiusStart;
         const y1 = centerY + Math.sin(angle) * radiusStart;
         const x2 = centerX + Math.cos(angle) * (radiusStart + barHeight);
         const y2 = centerY + Math.sin(angle) * (radiusStart + barHeight);
+
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
         ctx.stroke();
     }
+
+    // 2. Inner Circle (Bass)
     const centerRadius = (pulse * 50 * globalScale) + 10;
     ctx.fillStyle = `hsl(${hueBase}, 70%, 80%)`;
     ctx.beginPath();
     ctx.arc(centerX, centerY, centerRadius, 0, Math.PI * 2);
     ctx.fill();
+
+    // 3. Shockwave rings
     ctx.strokeStyle = `rgba(255, 255, 255, ${0.5 - pulse * 0.5})`;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(centerX, centerY, centerRadius + 20 + pulse * 50, 0, Math.PI * 2);
     ctx.stroke();
+
+    // Particles (Treble)
     const treble = dataArray.slice(150, 250).reduce((a, b) => a + b, 0) / 100;
     if (treble > 100 && Math.random() < 0.4) {
         spawnParticle(centerX + (Math.random() - 0.5) * 200, centerY + (Math.random() - 0.5) * 200, `hsl(${Math.random() * 360}, 100%, 80%)`);
@@ -1446,29 +1181,26 @@ function drawAudioVisualizer(timestamp, ctx) {
     updateDrawParticles(ctx);
 }
 
-// --- MANDELBROT / JULIA ZOOM MODE ---
+// --- MANDELBROT ZOOM MODE ---
 let mandelbrotState = {
-    cx: -0.743643887037151,
-    cy: 0.131825904205330,
+    // Interesting point (Seahorse Valley)
+    cx: -0.7436438870371587,
+    cy: 0.13182590420531197,
     scale: 1.0,
-    baseMaxIter: 64
+    maxIter: 128
 };
-let juliaState = {
-    cx: -0.7,
-    cy: 0.27015,
-    angle: 0
-};
-let fracCanvas = document.createElement('canvas'); // Safe?
-let fracCtx = fracCanvas.getContext('2d'); // Safe?
+
+// Offscreen buffer for performance
+let fracCanvas = document.createElement('canvas');
+let fracCtx = fracCanvas.getContext('2d');
 let fracWidth = 0;
 let fracHeight = 0;
 
 function drawFractal(timestamp, ctx) {
-    const quality = fractalQuality || 0.2;
+    // Performance: Render at lower resolution
+    const quality = 0.25; // 1/4 resolution (faster)
     const w = Math.floor(renderWidth * quality);
     const h = Math.floor(renderHeight * quality);
-
-    if (w < 1 || h < 1) return;
 
     if (fracWidth !== w || fracHeight !== h) {
         fracCanvas.width = w;
@@ -1477,136 +1209,78 @@ function drawFractal(timestamp, ctx) {
         fracHeight = h;
     }
 
-    if (fractalType === 'mandelbrot') {
-        mandelbrotState.scale *= fractalZoomSpeed;
-        if (mandelbrotState.scale > 1e14) mandelbrotState.scale = 1.0;
-    } else {
-        juliaState.angle += (fractalZoomSpeed - 1.0) * 0.5;
-        juliaState.cx = 0.7885 * Math.cos(juliaState.angle);
-        juliaState.cy = 0.7885 * Math.sin(juliaState.angle);
-    }
+    // Smooth Zoom
+    mandelbrotState.scale *= 1.02; // Zoom speed
+    if (mandelbrotState.scale > 1e13) mandelbrotState.scale = 1.0; // Reset loop
 
-    const scale = (fractalType === 'mandelbrot') ? (3.0 / mandelbrotState.scale) : 3.0;
-    const centerX = (fractalType === 'mandelbrot') ? mandelbrotState.cx : 0;
-    const centerY = (fractalType === 'mandelbrot') ? mandelbrotState.cy : 0;
+    const scale = 3.0 / mandelbrotState.scale;
+    const cx = mandelbrotState.cx;
+    const cy = mandelbrotState.cy;
 
-    let maxIter = mandelbrotState.baseMaxIter;
-    if (fractalType === 'mandelbrot') {
-        const zoomLevel = Math.log10(mandelbrotState.scale);
-        // Significantly increase max iterations based on zoom to prevent black blobs at e6+
-        maxIter = Math.min(2000, Math.floor(100 + 80 * zoomLevel));
-    } else {
-        maxIter = 128;
-    }
-
+    // Pixel Manipulation
     const imgData = fracCtx.createImageData(w, h);
     const data = imgData.data;
 
     for (let py = 0; py < h; py++) {
         for (let px = 0; px < w; px++) {
-            // --- FOVEATED RENDERING OPTIMIZATION ---
-            // Calculate distance from center (0.0 to 1.0 approx at edges)
-            const dx = px - w / 2;
-            const dy = py - h / 2;
-            const distSq = (dx * dx + dy * dy);
-            const maxDistSq = (w * w + h * h) * 0.25;
-            const distRatio = distSq / maxDistSq;
+            // Map pixel to complex plane
+            const x0 = cx + (px - w / 2) * scale / h; // Aspect ratio fix
+            const y0 = cy + (py - h / 2) * scale / h;
 
-            // Reduce iterations at edges to save performance (User Request: "High quality center, light outer")
-            // Center = 100% maxIter, Edge = ~20% maxIter
-            const currentPixelMaxIter = Math.floor(maxIter * (1 - 0.8 * distRatio));
-
-            const x0 = centerX + (px - w / 2) * scale / h;
-            const y0 = centerY + (py - h / 2) * scale / h;
-            let x = (fractalType === 'mandelbrot') ? 0 : x0;
-            let y = (fractalType === 'mandelbrot') ? 0 : y0;
-            const jcx = juliaState.cx;
-            const jcy = juliaState.cy;
-            const mcx = x0;
-            const mcy = y0;
+            let x = 0;
+            let y = 0;
             let iter = 0;
+            const max = mandelbrotState.maxIter;
 
-            while (x * x + y * y <= 4 && iter < currentPixelMaxIter) {
-                const xtemp = x * x - y * y + ((fractalType === 'mandelbrot') ? mcx : jcx);
-                y = 2 * x * y + ((fractalType === 'mandelbrot') ? mcy : jcy);
+            while (x * x + y * y <= 4 && iter < max) {
+                const xtemp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
                 x = xtemp;
                 iter++;
             }
+
+            // Color mapping
             const pixelIndex = (py * w + px) * 4;
-
-            if (iter >= currentPixelMaxIter) {
-                // --- INTERIOR COLORING (Trapped Orbit) ---
-                // User Request: "Don't be boring darkness"
-                // Use final z (x,y) to create a pattern
-                const angle = Math.atan2(y, x);
-                const dist = Math.sqrt(x * x + y * y);
-                const colorShift = timestamp * 0.001;
-
-                // Psychedelic interior pattern
-                data[pixelIndex] = Math.sin(angle * 10 + dist * 20 + colorShift) * 127 + 128;
-                data[pixelIndex + 1] = Math.sin(angle * 13 + dist * 15 + colorShift + 2) * 127 + 128;
-                data[pixelIndex + 2] = Math.sin(angle * 7 + dist * 30 + colorShift + 4) * 127 + 128;
-                data[pixelIndex + 3] = 255;
+            if (iter === max) {
+                data[pixelIndex] = 0;     // R
+                data[pixelIndex + 1] = 0; // G
+                data[pixelIndex + 2] = 0; // B
+                data[pixelIndex + 3] = 255; // A
             } else {
-                // Much slower color cycling (User Request: "Eyes hurt")
-                const colorShift = timestamp * 0.002;
-                data[pixelIndex] = Math.sin(iter * 0.2 + colorShift) * 127 + 128; // R
-                data[pixelIndex + 1] = Math.sin(iter * 0.2 + 2 + colorShift) * 127 + 128; // G
-                data[pixelIndex + 2] = Math.sin(iter * 0.2 + 4 + colorShift) * 127 + 128; // B
+                // Psychedelic Rainbow
+                data[pixelIndex] = Math.sin(iter * 0.2 + 0) * 127 + 128; // R
+                data[pixelIndex + 1] = Math.sin(iter * 0.2 + 2) * 127 + 128; // G
+                data[pixelIndex + 2] = Math.sin(iter * 0.2 + 4) * 127 + 128; // B
                 data[pixelIndex + 3] = 255;
             }
         }
     }
+
     fracCtx.putImageData(imgData, 0, 0);
-    ctx.imageSmoothingEnabled = false;
+
+    // Draw upscale to main canvas
+    ctx.imageSmoothingEnabled = false; // Pixel art look
     ctx.drawImage(fracCanvas, 0, 0, renderWidth, renderHeight);
 
+    // Add text overlay
     ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
     ctx.font = '16px monospace';
-    const txt = (fractalType === 'mandelbrot') ? `Zoom: ${mandelbrotState.scale.toExponential(2)}` : `Julia: ${juliaState.cx.toFixed(3)}`;
-    ctx.fillText(txt, 20, renderHeight - 40);
+    ctx.fillText(`Zoom: ${mandelbrotState.scale.toExponential(2)}`, 20, renderHeight - 40);
 }
 
 
 function render() {
     const timestamp = Date.now();
+
     const ctx = canvas.getContext('2d');
-
-    // Heartbeat: Small Green Square to prove render loop is alive
-    ctx.fillStyle = 'lime';
-    ctx.fillRect(0, 0, 5, 5);
-
     ctx.clearRect(0, 0, renderWidth, renderHeight);
 
-    // Explicit error handling per mode
     if (currentMode === 'physics') {
-        try {
-            drawPhysicsMode(timestamp, ctx);
-        } catch (e) {
-            ctx.fillStyle = 'red';
-            ctx.font = '16px monospace';
-            ctx.fillText("Phys Crash: " + e.message, 20, 100);
-            ctx.fillText(e.stack ? e.stack.substring(0, 50) : "No Stack", 20, 120);
-            console.error(e);
-        }
+        drawPhysicsMode(timestamp, ctx);
     } else if (currentMode === 'audio') {
-        try {
-            drawAudioVisualizer(timestamp, ctx);
-        } catch (e) {
-            ctx.fillStyle = 'red';
-            ctx.font = '16px monospace';
-            ctx.fillText("Audio Crash: " + e.message, 20, 100);
-            console.error(e);
-        }
+        drawAudioVisualizer(timestamp, ctx);
     } else if (currentMode === 'fractal') {
-        try {
-            drawFractal(timestamp, ctx);
-        } catch (e) {
-            ctx.fillStyle = 'red';
-            ctx.font = '16px monospace';
-            ctx.fillText("Frac Crash: " + e.message, 20, 100);
-            console.error(e);
-        }
+        drawFractal(timestamp, ctx);
     }
 
     ctx.globalCompositeOperation = 'source-over';
@@ -1617,30 +1291,28 @@ render();
 
 // --- EXPORT FOR HTML BUTTONS ---
 window.setMode = function (mode) {
-    if (mode === currentMode) return;
+    if (mode === currentMode) return; // Do nothing if same mode
+
     currentMode = mode;
+    // Reset text if leaving mode
     const fracBtn = document.getElementById('btn-fractal');
     if (fracBtn) fracBtn.textContent = 'Frac';
 
-    if (mode === 'audio') setupAudio();
 
+    // Manage Engine State
+    if (mode === 'physics') {
+        // Resume physics if needed (Matter.js runs on Engine.update call which is in render loop)
+        // Actually current implementation calls Engine.update explicitly in drawPhysicsMode.
+        // So switching modes automatically pauses physics. 
+    } else if (mode === 'audio') {
+        setupAudio(); // Try initializing if not already
+    }
+
+    // Update Button Styles (Simple toggle class)
     document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById('btn-' + mode).classList.add('active');
 
-    const physSet = document.getElementById('physics-settings');
-    const fracSet = document.getElementById('fractal-settings');
-
-    if (mode === 'physics') {
-        if (physSet) physSet.style.display = 'block';
-        if (fracSet) fracSet.style.display = 'none';
-    } else if (mode === 'fractal') {
-        if (physSet) physSet.style.display = 'none';
-        if (fracSet) fracSet.style.display = 'block';
-    } else {
-        if (physSet) physSet.style.display = 'none';
-        if (fracSet) fracSet.style.display = 'none';
-    }
-
+    // Update button text immediately
     if (currentMode === 'fractal') {
         const fracBtn = document.getElementById('btn-fractal');
         if (fracBtn) fracBtn.textContent = 'Fractal';
@@ -1651,6 +1323,7 @@ window.toggleAudio = function () {
     setupAudio();
 };
 
+// Keyboard Shortcuts
 window.addEventListener('keydown', (e) => {
     if (e.key === '1') window.setMode('physics');
     if (e.key === '2') window.setMode('audio');

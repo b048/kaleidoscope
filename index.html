@@ -10,13 +10,16 @@
 </head>
 
 <body>
-    <div id="instruction-overlay" style="display: none;">
-        <button id="startButton">START (Enable Sensors)</button>
-        <div id="debug-info" style="display:none;">Waiting for sensor...</div>
-    </div>
+
     <div id="controls">
+        <div id="sensor-dashboard"
+            style="font-family: monospace; font-size: 10px; color: lime; padding: 5px; display: none;">
+            <div>A: <span id="val-alpha">0</span></div>
+            <div>B: <span id="val-beta">0</span></div>
+            <div>G: <span id="val-gamma">0</span></div>
+        </div>
         <div class="control-header">
-            <div class="logo">KALEID</div>
+            <div class="logo">KALEID <span style="font-size: 0.6em; color: #00d2ff;">v1.2</span></div>
             <div class="mode-switch">
                 <button id="btn-physics" class="mode-btn active" onclick="setMode('physics')">Phys</button>
                 <button id="btn-audio" class="mode-btn" onclick="setMode('audio')">Audio</button>
