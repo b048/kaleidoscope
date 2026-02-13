@@ -237,11 +237,21 @@ const slotBaseY = renderHeight - CONFIG.supplyBoxHeight + 20;
 const slotWidth = renderWidth / CONFIG.slotCountCols;
 const slotRowHeight = CONFIG.supplyBoxHeight / CONFIG.slotRows;
 
-for (let row = 0; row < CONFIG.slotRows; row++) {
-    for (let col = 0; col < CONFIG.slotCountCols; col++) {
-        supplySlots.push({ x: (col + 0.5) * slotWidth, y: slotBaseY + (row * slotRowHeight), occupiedBy: null });
+// Supply Slots (Dynamic)
+// Replaced static loop with updateSupplySlots() triggered by init or slider.
+updateSupplySlots();
+
+// UI Listeners (Bottom of file usually, but adding here for context or moving to setup)
+document.addEventListener('DOMContentLoaded', () => {
+    const densityCtrl = document.getElementById('densityControl');
+    if (densityCtrl) {
+        densityCtrl.addEventListener('input', (e) => {
+            densityScale = parseFloat(e.target.value);
+            document.getElementById('val-density').textContent = densityScale.toFixed(1);
+            updateSupplySlots();
+        });
     }
-}
+});
 
 // Generate Gemstones
 function createGem(x, y, isStaticInBox = false) {
@@ -293,6 +303,12 @@ function createGem(x, y, isStaticInBox = false) {
         plug.type = 'normal';
     }
 
+    // Rod Logic (User Request)
+    const isRod = !isGlowing && !isEye && Math.random() < 0.15;
+
+    // Adjust plugin type if it's a rod
+    if (isRod) plug.type = 'rod';
+
     const bodyOptions = {
         friction: 0.005,
         restitution: gemRestitution,
@@ -306,7 +322,15 @@ function createGem(x, y, isStaticInBox = false) {
         plugin: plug
     };
 
-    const body = Bodies.polygon(x, y, sides, finalSize, bodyOptions);
+    let body;
+    if (isRod) {
+        const w = 8 * globalScale; // Slightly thicker
+        const h = (40 + Math.random() * 50) * globalScale; // Range 40-90
+        bodyOptions.angle = Math.random() * Math.PI;
+        body = Bodies.rectangle(x, y, w, h, bodyOptions);
+    } else {
+        body = Bodies.polygon(x, y, sides, finalSize, bodyOptions);
+    }
 
     if (isGlowing || isEye) {
         Body.setDensity(body, body.density * 5);
