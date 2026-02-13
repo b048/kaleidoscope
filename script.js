@@ -584,22 +584,88 @@ const initSensors = async () => {
     if (!document.fullscreenElement) {
         try { await document.documentElement.requestFullscreen(); } catch (e) { }
     }
+
+    // Orientation Permission
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
             const response = await DeviceOrientationEvent.requestPermission();
             if (response === 'granted') {
                 window.addEventListener('deviceorientation', handleOrientation);
             }
-        } catch (e) {
-            console.error(e);
-        }
+        } catch (e) { console.error(e); }
     } else {
         window.addEventListener('deviceorientation', handleOrientation);
     }
+
+    // Motion Permission (Often same permission request covers both, but safe to check)
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+        try {
+            const response = await DeviceMotionEvent.requestPermission();
+            if (response === 'granted') {
+                window.addEventListener('devicemotion', handleMotion);
+            }
+        } catch (e) { console.error(e); }
+    } else {
+        window.addEventListener('devicemotion', handleMotion);
+    }
+
     // Remove listeners after first successful triggering attempt
     window.removeEventListener('click', initSensors);
     window.removeEventListener('touchstart', initSensors);
 };
+
+// Shake Detection
+let lastShakeTime = 0;
+const SHAKE_THRESHOLD = 20; // m/s^2 (Gravity is ~9.8, so need strong shake)
+const SHAKE_COOLDOWN = 300; // ms
+
+function handleMotion(event) {
+    if (!event.acceleration) return; // Need linear acceleration (without gravity preferably)
+
+    // accelerationIncludingGravity is usually available. acceleration is sometimes null.
+    // If acceleration is null, fallback to diff of includingGravity.
+    // However, event.acceleration (without gravity) is best for shake.
+
+    let acc = event.acceleration;
+    if (!acc || acc.x === null) return; // Can't detect shake reliably without sensor
+
+    const mag = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+
+    if (mag > SHAKE_THRESHOLD) {
+        const now = Date.now();
+        if (now - lastShakeTime > SHAKE_COOLDOWN) {
+            lastShakeTime = now;
+            applyShakeForce(acc.x, acc.y, acc.z);
+        }
+    }
+}
+
+function applyShakeForce(ax, ay, az) {
+    if (currentMode !== 'physics') return;
+
+    // Normalize shake vector to get direction
+    const mag = Math.sqrt(ax * ax + ay * ay + az * az);
+    if (mag === 0) return;
+
+    const dirX = ax / mag;
+    const dirY = ay / mag;
+    // az is Z-axis (screen normal). We can use it to "pop" things?
+    // Kaleid is 2D. We can just use X/Y or use Z to add randomness.
+
+    const forceMagnitude = 0.05 * (mag / SHAKE_THRESHOLD); // Scale force by shake strength
+
+    const bodies = Composite.allBodies(engine.world);
+    for (let body of bodies) {
+        if (!body.isStatic) {
+            // Apply force in shake direction + random jitter
+            // Matter.js Force application
+            Body.applyForce(body, body.position, {
+                x: (dirX + (Math.random() - 0.5)) * forceMagnitude * body.mass,
+                y: (dirY + (Math.random() - 0.5)) * forceMagnitude * body.mass
+            });
+        }
+    }
+}
 
 window.addEventListener('click', initSensors);
 window.addEventListener('touchstart', initSensors);
