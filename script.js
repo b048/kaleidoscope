@@ -312,7 +312,8 @@ function maintainActivePopulation() {
         if (Math.random() < 0.2) { // Throttle spawning
             const x = boundaryCenter.x;
             const y = boundaryCenter.y;
-            const newGem = createGem(x, y, false);
+            // Pass allowSpecial = false to prevent new eyes during adjust
+            const newGem = createGem(x, y, false, false);
 
             // Give it a random kick
             const angle = Math.random() * Math.PI * 2;
@@ -326,10 +327,18 @@ function maintainActivePopulation() {
     } else if (activeGems.length > targetCount) {
         // Remove (Throttle)
         if (Math.random() < 0.2) {
-            const index = Math.floor(Math.random() * activeGems.length);
-            const bodyToRemove = activeGems[index];
-            Composite.remove(engine.world, bodyToRemove);
-            spawnParticle(bodyToRemove.position.x, bodyToRemove.position.y, bodyToRemove.render.fillStyle);
+            // Filter out Eyes/SuperEyes to preserve them
+            const removableGems = activeGems.filter(b => {
+                const type = b.plugin ? b.plugin.type : 'normal';
+                return type !== 'eye' && type !== 'super_eye';
+            });
+
+            if (removableGems.length > 0) {
+                const index = Math.floor(Math.random() * removableGems.length);
+                const bodyToRemove = removableGems[index];
+                Composite.remove(engine.world, bodyToRemove);
+                spawnParticle(bodyToRemove.position.x, bodyToRemove.position.y, bodyToRemove.render.fillStyle);
+            }
         }
     }
 }
@@ -373,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Generate Gemstones
-function createGem(x, y, isStaticInBox = false) {
+function createGem(x, y, isStaticInBox = false, allowSpecial = true) {
     // Randomize size more (User Request) -> Expanded range
     const baseSize = 8 + Math.random() * 25; // 8 to 33 range (More variance)
     let size = baseSize * globalScale; // Apply scale to supply gems too
@@ -382,9 +391,9 @@ function createGem(x, y, isStaticInBox = false) {
     let color = CONFIG.gemColors[Math.floor(Math.random() * CONFIG.gemColors.length)];
 
     const rand = Math.random();
-    const isSuperRare = rand < 0.00025;
-    const isEyeOnly = rand >= 0.00025 && rand < 0.00525;
-    const isGlowingOnly = rand >= 0.00525 && rand < 0.05525;
+    const isSuperRare = allowSpecial && (rand < 0.00025);
+    const isEyeOnly = allowSpecial && (rand >= 0.00025 && rand < 0.00525);
+    const isGlowingOnly = allowSpecial && (rand >= 0.00525 && rand < 0.05525);
 
     const isGlowing = isSuperRare || isGlowingOnly;
     const isEye = isSuperRare || isEyeOnly;
