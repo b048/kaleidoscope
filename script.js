@@ -1640,6 +1640,14 @@ function drawFractal(timestamp, ctx) {
 
 function render() {
     const timestamp = Date.now();
+    // FPS Calculation
+    frameCount++;
+    if (timestamp - lastFpsTime >= 1000) {
+        currentFps = frameCount;
+        frameCount = 0;
+        lastFpsTime = timestamp;
+    }
+
     const ctx = canvas.getContext('2d');
 
     // Heartbeat: Small Green Square to prove render loop is alive
