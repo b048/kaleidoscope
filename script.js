@@ -1656,8 +1656,8 @@ function render() {
         document.getElementById('val-res').textContent = renderWidth + 'x' + renderHeight;
 
         // --- Gravity Graph (Acc) ---
-        if (!debugState.historyX) debugState.historyX = new Array(140).fill(0);
-        if (!debugState.historyY) debugState.historyY = new Array(140).fill(0);
+        if (!debugState.historyX) debugState.historyX = new Array(280).fill(0);
+        if (!debugState.historyY) debugState.historyY = new Array(280).fill(0);
 
         debugState.historyX.push(gx);
         debugState.historyX.shift();
@@ -1701,9 +1701,9 @@ function render() {
         }
 
         // --- Sensor Graph (A/B/G) ---
-        if (!debugState.histA) debugState.histA = new Array(140).fill(0);
-        if (!debugState.histB) debugState.histB = new Array(140).fill(0);
-        if (!debugState.histG) debugState.histG = new Array(140).fill(0);
+        if (!debugState.histA) debugState.histA = new Array(280).fill(0);
+        if (!debugState.histB) debugState.histB = new Array(280).fill(0);
+        if (!debugState.histG) debugState.histG = new Array(280).fill(0);
 
         debugState.histA.push(parseFloat(debugState.alpha));
         debugState.histA.shift();
@@ -1730,7 +1730,7 @@ function render() {
             // Let's just scale everything by dividing by 4 and centering.
             // 360/4 = 90. -180/4 = -45. Total range 135px? Canvas is 60px.
             // Divide by 10? 36px. Good.
-            const scale = 0.15; // 100 deg -> 15px
+            const sScale = 0.1; // 100 deg -> 15px
             const cy = h / 2;
 
             // Grid
@@ -1748,7 +1748,7 @@ function render() {
                     const val = arr[i];
                     // Wrap Alpha for display? Alpha 0 and 360 jump.
                     // Just direct plot.
-                    const y = cy - (val * scale);
+                    const y = cy - (val * sScale);
                     if (i === 0) ctxS.moveTo(i, y); else ctxS.lineTo(i, y);
                 }
                 ctxS.stroke();
@@ -1776,17 +1776,27 @@ function render() {
             ctxA.arc(cx, cy, w / 2 - 2, 0, Math.PI * 2);
             ctxA.stroke();
 
-            // Gravity Vector
-            // Gravity is usually magnitude ~1.0
-            // Scale it to fit in circle (radius ~23px)
-            const scale = (w / 2 - 4);
-            const endX = cx + gx * scale;
-            const endY = cy + gy * scale;
+            // Calculate Vector Properties
+            const mag = Math.sqrt(gx * gx + gy * gy);
+            // Color based on Magnitude
+            // Map 0 (Zero-G) -> Blue (240), 1 (Normal) -> Green (120), 2+ (High) -> Red (0)
+            let hue = 240 - (mag * 120);
+            if (hue < 0) hue = 0;
+            if (hue > 240) hue = 240;
+            const arrowColor = `hsl(${hue}, 100%, 50%)`;
 
-            ctxA.strokeStyle = colGX; // Resuse X color (Red) or just White? Red/Blue mix?
-            // Let's use Cyan as it matches GravY (vertical) or just White for general direction.
-            // Actually, let's use a distinct color, valid visibility. Yellow?
-            ctxA.strokeStyle = '#ffff00';
+            // Fixed Length Direction
+            const arrowLen = w / 2 - 4;
+            let dirX = 0, dirY = -1; // Default up? Or 0?
+            if (mag > 0.01) {
+                dirX = gx / mag;
+                dirY = gy / mag;
+            }
+
+            const endX = cx + dirX * arrowLen;
+            const endY = cy + dirY * arrowLen;
+
+            ctxA.strokeStyle = arrowColor;
             ctxA.lineWidth = 3;
             ctxA.beginPath();
             ctxA.moveTo(cx, cy);
@@ -1794,13 +1804,13 @@ function render() {
             ctxA.stroke();
 
             // Arrow head
-            const angle = Math.atan2(gy, gx);
+            const angle = Math.atan2(dirY, dirX);
             ctxA.beginPath();
             ctxA.moveTo(endX, endY);
             ctxA.lineTo(endX - 7 * Math.cos(angle - Math.PI / 6), endY - 7 * Math.sin(angle - Math.PI / 6));
             ctxA.lineTo(endX - 7 * Math.cos(angle + Math.PI / 6), endY - 7 * Math.sin(angle + Math.PI / 6));
             ctxA.closePath();
-            ctxA.fillStyle = '#ffff00';
+            ctxA.fillStyle = arrowColor;
             ctxA.fill();
         }
     }
