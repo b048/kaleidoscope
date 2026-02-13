@@ -1758,6 +1758,51 @@ function render() {
             drawLine(debugState.histB, colBeta);
             drawLine(debugState.histG, colGamma);
         }
+
+        // --- Gravity Arrow (Vector) ---
+        const canvasA = document.getElementById('debug-arrow');
+        if (canvasA) {
+            const ctxA = canvasA.getContext('2d');
+            const w = canvasA.width;
+            const h = canvasA.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            ctxA.clearRect(0, 0, w, h);
+
+            // Outer ring
+            ctxA.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctxA.lineWidth = 1;
+            ctxA.beginPath();
+            ctxA.arc(cx, cy, w / 2 - 2, 0, Math.PI * 2);
+            ctxA.stroke();
+
+            // Gravity Vector
+            // Gravity is usually magnitude ~1.0
+            // Scale it to fit in circle (radius ~23px)
+            const scale = (w / 2 - 4);
+            const endX = cx + gx * scale;
+            const endY = cy + gy * scale;
+
+            ctxA.strokeStyle = colGX; // Resuse X color (Red) or just White? Red/Blue mix?
+            // Let's use Cyan as it matches GravY (vertical) or just White for general direction.
+            // Actually, let's use a distinct color, valid visibility. Yellow?
+            ctxA.strokeStyle = '#ffff00';
+            ctxA.lineWidth = 3;
+            ctxA.beginPath();
+            ctxA.moveTo(cx, cy);
+            ctxA.lineTo(endX, endY);
+            ctxA.stroke();
+
+            // Arrow head
+            const angle = Math.atan2(gy, gx);
+            ctxA.beginPath();
+            ctxA.moveTo(endX, endY);
+            ctxA.lineTo(endX - 7 * Math.cos(angle - Math.PI / 6), endY - 7 * Math.sin(angle - Math.PI / 6));
+            ctxA.lineTo(endX - 7 * Math.cos(angle + Math.PI / 6), endY - 7 * Math.sin(angle + Math.PI / 6));
+            ctxA.closePath();
+            ctxA.fillStyle = '#ffff00';
+            ctxA.fill();
+        }
     }
 
     ctx.globalCompositeOperation = 'source-over';

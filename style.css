@@ -87,18 +87,31 @@ canvas {
     position: fixed;
     bottom: 10px;
     left: 10px;
-    background: rgba(0, 0, 0, 0.7);
+    background: rgba(0, 0, 0, 0.8);
+    /* Darker background */
     color: lime;
     padding: 10px;
     border-radius: 8px;
     font-family: monospace;
     font-size: 12px;
+    font-weight: bold;
+    /* Bold text */
     pointer-events: none;
     z-index: 200;
     backdrop-filter: blur(4px);
     border: 1px solid rgba(0, 255, 0, 0.3);
     display: none;
-    /* Hidden by default */
+    text-shadow: 1px 1px 0 #000;
+    /* Text shadow for visibility */
+}
+
+#debug-arrow {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 #debug-dashboard.visible {
@@ -317,8 +330,10 @@ input[type=range]::-webkit-slider-runnable-track {
     #debug-dashboard {
         font-size: 9px;
         width: auto;
-        max-width: 140px;
-        bottom: 50px;
+        min-width: 150px;
+        /* Ensure space for arrow */
+        max-width: 200px;
+        bottom: 60px;
         /* Avoid bottom nav/safe area */
         left: 5px;
         padding: 5px;
