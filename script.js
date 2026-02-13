@@ -47,6 +47,7 @@ const kaleidoState = {
 // --- Particles System ---
 const particles = [];
 function spawnParticle(x, y, color) {
+    if (!effectsEnabled) return; // Skip particle spawning when effects disabled
     if (particles.length > CONFIG.particleCount) particles.shift();
     particles.push({
         x: x,
@@ -59,6 +60,7 @@ function spawnParticle(x, y, color) {
     });
 }
 function spawnRisingParticle(x, y, color) {
+    if (!effectsEnabled) return; // Skip particle spawning when effects disabled
     if (particles.length > CONFIG.particleCount * 2) particles.shift(); // Allow more for super
     particles.push({
         x: x,
@@ -189,20 +191,22 @@ if (autoRotateCheckbox) {
 }
 
 
+// Boundaries (will be updated on resize)
+let boundaryRadius = Math.min(window.innerWidth, window.innerHeight) * 0.4;
+let boundaryCenter = { x: window.innerWidth / 2, y: window.innerHeight * 0.4 };
+
 // Resize
 function resize() {
     renderWidth = window.innerWidth;
     renderHeight = window.innerHeight;
     canvas.width = renderWidth;
     canvas.height = renderHeight;
-    // No render controller options update needed
+    // Update boundary radius and center on resize
+    boundaryRadius = Math.min(renderWidth, renderHeight) * 0.4;
+    boundaryCenter = { x: renderWidth / 2, y: renderHeight * 0.4 };
 }
 window.addEventListener('resize', resize);
 resize();
-
-// Boundaries
-const boundaryRadius = Math.min(renderWidth, renderHeight) * 0.4;
-const boundaryCenter = { x: renderWidth / 2, y: renderHeight * 0.4 };
 
 function createWalls() {
     const walls = [];
@@ -268,35 +272,43 @@ function updateSupplySlots() {
 // ...
 
 // Population Control
+// Population Control
 function maintainActivePopulation() {
     let bodies = Composite.allBodies(engine.world);
-    let activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
+    // Filter all gems (excluding static supply)
+    let allGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
 
-    // Cleanup Out-of-Bounds (Don't count them, remove them)
-    // DISABLED: Allow objects to exist outside the boundary circle
-    // activeGems.forEach(b => {
-    //     const dx = b.position.x - boundaryCenter.x;
-    //     const dy = b.position.y - boundaryCenter.y;
-    //     const dist = Math.sqrt(dx * dx + dy * dy);
-    //     if (dist > boundaryRadius + 60) { // Margin
-    //         Composite.remove(engine.world, b);
-    //         spawnParticle(b.position.x, b.position.y, b.render.fillStyle);
-    //     }
-    // });
+    // Split into Visible (inside boundary) and Outside
+    // margin of 20px to avoid flickering at edge
+    const visibleThreshold = boundaryRadius + 20;
 
-    // Re-fetch after cleanup to get accurate count
-    bodies = Composite.allBodies(engine.world);
-    activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
+    const visibleGems = [];
+    // const outsideGems = []; // Not needed unless we want to manage them separately
+
+    allGems.forEach(b => {
+        const dx = b.position.x - boundaryCenter.x;
+        const dy = b.position.y - boundaryCenter.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= visibleThreshold) {
+            visibleGems.push(b);
+        } else {
+            // outsideGems.push(b);
+        }
+    });
 
     // Interactive Logic
     if (!isUserInteractingWithCount) {
-        // IDLE: Sync slider to current count, do NOT spawn/cull
-        targetObjectCount = activeGems.length;
+        // IDLE: Sync slider to current VISIBLE count
+        // If objects fall out, the count drops, and slider should follow?
+        // Or should it stay stable? 
+        // User said: "スライダーに触れていないときはスライダーが現在の個数に合わせる"
+        // (When not touching, slider matches current count).
+        // If objects fall out, "current count" (visible) decreases. So slider should decrease.
+
+        targetObjectCount = visibleGems.length;
         const countCtrl = document.getElementById('countControl');
         const countVal = document.getElementById('val-count-setting');
         if (countCtrl && countVal) {
-            // Only update DOM if value changed to avoid expensive layout thrashing every frame?
-            // Values are integers, so check vs value.
             if (parseInt(countCtrl.value) !== targetObjectCount) {
                 countCtrl.value = targetObjectCount;
                 countVal.textContent = targetObjectCount;
@@ -305,40 +317,64 @@ function maintainActivePopulation() {
         return; // Exit, no spawning/culling
     }
 
-    // ACTIVE: Adjust towards target
+    // ACTIVE: Adjust VISIBLE population towards target
     const targetCount = targetObjectCount;
+    const currentCount = visibleGems.length;
+    const diff = targetCount - currentCount;
 
-    if (activeGems.length < targetCount) {
-        // Spawn (Center of Boundary)
-        if (Math.random() < 0.2) { // Throttle spawning
-            const x = boundaryCenter.x;
-            const y = boundaryCenter.y;
+    if (diff > 0) {
+        // SPAWN NEEDED
+        // Batch spawn for speed (User Request)
+        // Spawn up to 10 per frame, or the needed amount
+        const spawnCount = Math.min(diff, 10);
+
+        for (let i = 0; i < spawnCount; i++) {
+            if (Math.random() < 0.5) { // Slight throttle even in batch to spread them just a tiny bit? No, user wants speed.
+                // Actually, just spawn them.
+            }
+            // Center Spawn
+            // Spread start position slightly to avoid perfect stacking
+            const offsetR = Math.random() * 10;
+            const offsetA = Math.random() * Math.PI * 2;
+            const x = boundaryCenter.x + Math.cos(offsetA) * offsetR;
+            const y = boundaryCenter.y + Math.sin(offsetA) * offsetR;
+
             // Pass allowSpecial = false to prevent new eyes during adjust
             const newGem = createGem(x, y, false, false);
 
             // Give it a random kick
             const angle = Math.random() * Math.PI * 2;
-            const force = (0.002 + Math.random() * 0.005) * newGem.mass;
+            const force = (0.005 + Math.random() * 0.01) * newGem.mass; // Stronger kick for rapid spawn
             Body.applyForce(newGem, newGem.position, {
                 x: Math.cos(angle) * force,
                 y: Math.sin(angle) * force
             });
             Composite.add(engine.world, newGem);
         }
-    } else if (activeGems.length > targetCount) {
-        // Remove (Throttle)
-        if (Math.random() < 0.2) {
-            // Filter out Eyes/SuperEyes to preserve them
-            const removableGems = activeGems.filter(b => {
-                const type = b.plugin ? b.plugin.type : 'normal';
-                return type !== 'eye' && type !== 'super_eye';
-            });
 
+    } else if (diff < 0) {
+        // REMOVE NEEDED (From Visible Only)
+        // Remove up to 5 per frame
+        const removeCount = Math.min(Math.abs(diff), 5);
+
+        // Filter out Eyes/SuperEyes to preserve them
+        const removableGems = visibleGems.filter(b => {
+            const type = b.plugin ? b.plugin.type : 'normal';
+            return type !== 'eye' && type !== 'super_eye';
+        });
+
+        for (let i = 0; i < removeCount; i++) {
             if (removableGems.length > 0) {
+                // Random removal feels better than oldest/newest for "evaporation"
                 const index = Math.floor(Math.random() * removableGems.length);
                 const bodyToRemove = removableGems[index];
+
+                // Remove from world
                 Composite.remove(engine.world, bodyToRemove);
                 spawnParticle(bodyToRemove.position.x, bodyToRemove.position.y, bodyToRemove.render.fillStyle);
+
+                // Remove from local array to avoid double pick
+                removableGems.splice(index, 1);
             }
         }
     }
@@ -575,11 +611,21 @@ Events.on(engine, 'collisionStart', (event) => {
 let physicsSubMode = 'gravity'; // 'gravity', 'float', 'eye'
 
 function calculateInitialCount(densityScale = 0.5) {
-    const cylinderArea = Math.PI * boundaryRadius * boundaryRadius;
-    const avgGemRadius = 20;
-    const avgGemArea = Math.PI * avgGemRadius * avgGemRadius;
+    // Calculate boundary radius based on current screen size
+    const currentBoundaryRadius = Math.min(renderWidth, renderHeight) * 0.4;
+    const cylinderArea = Math.PI * currentBoundaryRadius * currentBoundaryRadius;
+
+    // Use average gem size considering globalScale (size slider)
+    // Base radius is 20, but we need to account for the size distribution
+    // The createGem function uses sizes from 8 to 33, with inverse square distribution
+    // Average effective radius considering distribution: approximately 15-18
+    const baseAvgRadius = 16; // Approximate average radius
+    const scaledAvgRadius = baseAvgRadius * globalScale;
+    const avgGemArea = Math.PI * scaledAvgRadius * scaledAvgRadius;
+
+    // Calculate count to fill half the circle (densityScale = 0.5 means half coverage)
     const targetCount = Math.floor((cylinderArea * densityScale) / avgGemArea);
-    return Math.min(200, Math.max(5, targetCount)); // Clamp
+    return Math.min(500, Math.max(5, targetCount)); // Clamp (increased max to 500)
 }
 
 function initPhysicsWorld() {
@@ -744,9 +790,10 @@ window.toggleDebug = function () {
 
 // Sensor Initialization on First Interaction
 const initSensors = async () => {
-    if (!document.fullscreenElement) {
-        try { await document.documentElement.requestFullscreen(); } catch (e) { }
-    }
+    // DISABLED: Auto fullscreen - removed automatic fullscreen request
+    // if (!document.fullscreenElement) {
+    //     try { await document.documentElement.requestFullscreen(); } catch (e) { }
+    // }
 
     // Orientation Permission
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -786,6 +833,8 @@ const SHAKE_COOLDOWN = 300; // ms
 let lastFpsTime = 0;
 let frameCount = 0;
 let currentFps = 0;
+const FPS_THRESHOLD = 30; // FPS threshold for disabling effects
+let effectsEnabled = true; // Track effects state
 
 function handleMotion(event) {
     if (!event.acceleration) return; // Need linear acceleration (without gravity preferably)
@@ -1337,7 +1386,7 @@ function drawPhysicsMode(timestamp, ctx) {
         }
 
         // Glow Particles & Power-up Aura
-        if (b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0) && !b.isStatic) {
+        if (effectsEnabled && b.plugin && (b.plugin.type === 'glowing' || b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0) && !b.isStatic) {
 
             // Super Saiyan or Power-up Effect
             if (b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0) {
@@ -1382,7 +1431,13 @@ function drawPhysicsMode(timestamp, ctx) {
         ctx.strokeRect(slot.x - halfW, slot.y - halfH, halfW * 2, halfH * 2);
     });
 
-    updateDrawParticles(ctx);
+    // Only draw particles if effects are enabled
+    if (effectsEnabled) {
+        updateDrawParticles(ctx);
+    } else {
+        // Clear particles array when effects disabled to free memory
+        particles.length = 0;
+    }
     ctx.globalCompositeOperation = 'screen';
 
     bodies.forEach(b => {
@@ -1402,7 +1457,7 @@ function drawPhysicsMode(timestamp, ctx) {
 
         // Main Fill
         if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
-            if (b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0) {
+            if (effectsEnabled && (b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0)) {
                 // AURA
                 const hue = (timestamp * 0.2) % 360; // Slow rainbow cycle
                 ctx.save();
@@ -1434,7 +1489,7 @@ function drawPhysicsMode(timestamp, ctx) {
             ctx.stroke();
             ctx.globalCompositeOperation = 'screen';
         } else {
-            if (b.plugin && b.plugin.type === 'glowing') {
+            if (effectsEnabled && b.plugin && b.plugin.type === 'glowing') {
                 ctx.shadowBlur = 15;
                 ctx.shadowColor = 'white';
                 ctx.fillStyle = fill;
@@ -1674,10 +1729,16 @@ function drawAudioVisualizer(timestamp, ctx) {
     ctx.arc(centerX, centerY, centerRadius + 20 + pulse * 50, 0, Math.PI * 2);
     ctx.stroke();
     const treble = dataArray.slice(150, 250).reduce((a, b) => a + b, 0) / 100;
-    if (treble > 100 && Math.random() < 0.4) {
+    if (effectsEnabled && treble > 100 && Math.random() < 0.4) {
         spawnParticle(centerX + (Math.random() - 0.5) * 200, centerY + (Math.random() - 0.5) * 200, `hsl(${Math.random() * 360}, 100%, 80%)`);
     }
-    updateDrawParticles(ctx);
+    // Only draw particles if effects are enabled
+    if (effectsEnabled) {
+        updateDrawParticles(ctx);
+    } else {
+        // Clear particles array when effects disabled to free memory
+        particles.length = 0;
+    }
 }
 
 // --- MANDELBROT / JULIA ZOOM MODE ---
@@ -1810,6 +1871,15 @@ function render() {
         currentFps = frameCount;
         frameCount = 0;
         lastFpsTime = timestamp;
+
+        // Auto-disable effects when FPS drops below threshold
+        const previousEffectsState = effectsEnabled;
+        effectsEnabled = currentFps >= FPS_THRESHOLD;
+
+        // If effects were just disabled, clear particles
+        if (!effectsEnabled && previousEffectsState) {
+            particles.length = 0;
+        }
     }
 
     const ctx = canvas.getContext('2d');
