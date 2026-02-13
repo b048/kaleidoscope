@@ -272,10 +272,7 @@ function maintainActivePopulation() {
     const activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
 
     // Calculate Target
-    // Base is CONFIG.initialBeadCount (32)
-    // Scale 0.2 -> 6.4 (6)
-    // Scale 2.0 -> 64
-    const targetCount = Math.floor(CONFIG.initialBeadCount * densityScale);
+    const targetCount = targetObjectCount;
 
     if (activeGems.length < targetCount) {
         // Spawn (Rate limited? Maybe 1 per frame is fine if missing many)
