@@ -434,10 +434,32 @@ function createGem(x, y, isStaticInBox = false, allowSpecial = true) {
     const sides = Math.floor(3 + Math.random() * 5);
     let color = CONFIG.gemColors[Math.floor(Math.random() * CONFIG.gemColors.length)];
 
-    const rand = Math.random();
-    const isSuperRare = allowSpecial && (rand < 0.00025);
-    const isEyeOnly = allowSpecial && (rand >= 0.00025 && rand < 0.00525);
-    const isGlowingOnly = allowSpecial && (rand >= 0.00525 && rand < 0.05525);
+    // --- Special Type Probabilities ---
+    // 要件: 目玉オブジェクトは 5% だけ、かつ「下の箱」(サプライボックス) からドラッグされたもののみ
+    // ここでは「isStaticInBox === true」のときだけ目玉の抽選を行う
+    let isSuperRare = false;
+    let isEyeOnly = false;
+    let isGlowingOnly = false;
+
+    if (allowSpecial) {
+        // Eyes: 5% total when in supply box
+        if (isStaticInBox) {
+            const rEye = Math.random();
+            // 0.5% Super Eye, 4.5% Normal Eye くらいのイメージ
+            if (rEye < 0.005) {
+                isEyeOnly = true; // Eye base
+                if (rEye < 0.0005) {
+                    isSuperRare = true; // Small subset becomes super_eye
+                }
+            }
+        }
+
+        // Glowing: 独立して 5% 程度で出現（場所は問わない）
+        const rGlow = Math.random();
+        if (rGlow < 0.05) {
+            isGlowingOnly = true;
+        }
+    }
 
     const isGlowing = isSuperRare || isGlowingOnly;
     const isEye = isSuperRare || isEyeOnly;
@@ -833,7 +855,9 @@ const SHAKE_COOLDOWN = 300; // ms
 let lastFpsTime = 0;
 let frameCount = 0;
 let currentFps = 0;
-const FPS_THRESHOLD = 30; // FPS threshold for disabling effects
+// FPS thresholds for effect control (hysteresis)
+const FPS_DISABLE_THRESHOLD = 30; // Below this, turn effects OFF
+const FPS_ENABLE_THRESHOLD = 60;  // Only when reaching this, turn effects back ON
 let effectsEnabled = true; // Track effects state
 
 function handleMotion(event) {
@@ -1872,9 +1896,19 @@ function render() {
         frameCount = 0;
         lastFpsTime = timestamp;
 
-        // Auto-disable effects when FPS drops below threshold
+        // Auto control effects with hysteresis:
+        // - Turn OFF when FPS drops below FPS_DISABLE_THRESHOLD
+        // - Keep OFF until FPS recovers to FPS_ENABLE_THRESHOLD
         const previousEffectsState = effectsEnabled;
-        effectsEnabled = currentFps >= FPS_THRESHOLD;
+        if (effectsEnabled) {
+            if (currentFps < FPS_DISABLE_THRESHOLD) {
+                effectsEnabled = false;
+            }
+        } else {
+            if (currentFps >= FPS_ENABLE_THRESHOLD) {
+                effectsEnabled = true;
+            }
+        }
 
         // If effects were just disabled, clear particles
         if (!effectsEnabled && previousEffectsState) {
@@ -1891,6 +1925,7 @@ function render() {
     ctx.clearRect(0, 0, renderWidth, renderHeight);
 
     // Explicit error handling per mode
+    // Explicit error handling per mode
     if (currentMode === 'physics') {
         try {
             drawPhysicsMode(timestamp, ctx);
@@ -1901,7 +1936,9 @@ function render() {
             ctx.fillText(e.stack ? e.stack.substring(0, 50) : "No Stack", 20, 120);
             console.error(e);
         }
-    } else if (currentMode === 'audio') {
+    }
+    /* 
+    else if (currentMode === 'audio') {
         try {
             drawAudioVisualizer(timestamp, ctx);
         } catch (e) {
@@ -1913,215 +1950,219 @@ function render() {
     } else if (currentMode === 'fractal') {
         try {
             drawFractal(timestamp, ctx);
-        } catch (e) {
-            ctx.fillStyle = 'red';
-            ctx.font = '16px monospace';
-            ctx.fillText("Frac Crash: " + e.message, 20, 100);
-            console.error(e);
+        } catch (e) { 
+             // ... handles below
         }
+    } 
+    */
+    ctx.fillStyle = 'red';
+    ctx.font = '16px monospace';
+    ctx.fillText("Frac Crash: " + e.message, 20, 100);
+    console.error(e);
+}
     }
 
-    if (debugState.visible) {
-        // Colors
-        const colAlpha = '#ffffff'; // White for better visibility (was Green)
-        const colBeta = '#ffff00';
-        const colGamma = '#ff00ff';
-        const colGX = '#ff4444';
-        const colGY = '#00ffff';
+if (debugState.visible) {
+    // Colors
+    const colAlpha = '#ffffff'; // White for better visibility (was Green)
+    const colBeta = '#ffff00';
+    const colGamma = '#ff00ff';
+    const colGX = '#ff4444';
+    const colGY = '#00ffff';
 
-        const elAlpha = document.getElementById('val-alpha');
-        const elBeta = document.getElementById('val-beta');
-        const elGamma = document.getElementById('val-gamma');
-        const elGX = document.getElementById('val-grav-x');
-        const elGY = document.getElementById('val-grav-y');
+    const elAlpha = document.getElementById('val-alpha');
+    const elBeta = document.getElementById('val-beta');
+    const elGamma = document.getElementById('val-gamma');
+    const elGX = document.getElementById('val-grav-x');
+    const elGY = document.getElementById('val-grav-y');
 
-        elAlpha.style.color = colAlpha; elAlpha.textContent = debugState.alpha;
-        elBeta.style.color = colBeta; elBeta.textContent = debugState.beta;
-        elGamma.style.color = colGamma; elGamma.textContent = debugState.gamma;
+    elAlpha.style.color = colAlpha; elAlpha.textContent = debugState.alpha;
+    elBeta.style.color = colBeta; elBeta.textContent = debugState.beta;
+    elGamma.style.color = colGamma; elGamma.textContent = debugState.gamma;
 
-        const gx = engine.world.gravity.x;
-        const gy = engine.world.gravity.y;
+    const gx = engine.world.gravity.x;
+    const gy = engine.world.gravity.y;
 
-        elGX.style.color = colGX; elGX.textContent = gx.toFixed(2);
-        elGY.style.color = colGY; elGY.textContent = gy.toFixed(2);
+    elGX.style.color = colGX; elGX.textContent = gx.toFixed(2);
+    elGY.style.color = colGY; elGY.textContent = gy.toFixed(2);
 
-        // Count & Energy
-        const bodies = engine.world.bodies;
-        let count = 0;
-        let totalKE = 0;
-        for (let b of bodies) {
-            if (!b.isStatic) {
-                count++;
-                totalKE += 0.5 * b.mass * (b.speed * b.speed);
-            }
+    // Count & Energy
+    const bodies = engine.world.bodies;
+    let count = 0;
+    let totalKE = 0;
+    for (let b of bodies) {
+        if (!b.isStatic) {
+            count++;
+            totalKE += 0.5 * b.mass * (b.speed * b.speed);
         }
-        document.getElementById('val-count').textContent = count;
-        document.getElementById('val-energy').textContent = Math.floor(totalKE);
-        document.getElementById('val-fps').textContent = currentFps;
+    }
+    document.getElementById('val-count').textContent = count;
+    document.getElementById('val-energy').textContent = Math.floor(totalKE);
+    document.getElementById('val-fps').textContent = currentFps;
 
-        document.getElementById('val-mouse').textContent = debugState.mouseX + ',' + debugState.mouseY;
-        document.getElementById('val-res').textContent = renderWidth + 'x' + renderHeight;
+    document.getElementById('val-mouse').textContent = debugState.mouseX + ',' + debugState.mouseY;
+    document.getElementById('val-res').textContent = renderWidth + 'x' + renderHeight;
 
-        // --- Gravity Graph (Acc) ---
-        if (!debugState.historyX) debugState.historyX = new Array(280).fill(0);
-        if (!debugState.historyY) debugState.historyY = new Array(280).fill(0);
+    // --- Gravity Graph (Acc) ---
+    if (!debugState.historyX) debugState.historyX = new Array(280).fill(0);
+    if (!debugState.historyY) debugState.historyY = new Array(280).fill(0);
 
-        debugState.historyX.push(gx);
-        debugState.historyX.shift();
-        debugState.historyY.push(gy);
-        debugState.historyY.shift();
+    debugState.historyX.push(gx);
+    debugState.historyX.shift();
+    debugState.historyY.push(gy);
+    debugState.historyY.shift();
 
-        const canvasG = document.getElementById('debug-graph');
-        if (canvasG) {
-            const ctxG = canvasG.getContext('2d');
-            const w = canvasG.width;
-            const h = canvasG.height;
-            ctxG.clearRect(0, 0, w, h);
+    const canvasG = document.getElementById('debug-graph');
+    if (canvasG) {
+        const ctxG = canvasG.getContext('2d');
+        const w = canvasG.width;
+        const h = canvasG.height;
+        ctxG.clearRect(0, 0, w, h);
 
-            // Grid
-            ctxG.strokeStyle = 'rgba(255,255,255,0.1)';
-            ctxG.lineWidth = 1;
-            ctxG.beginPath();
-            ctxG.moveTo(0, h / 2); ctxG.lineTo(w, h / 2);
-            ctxG.stroke();
+        // Grid
+        ctxG.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctxG.lineWidth = 1;
+        ctxG.beginPath();
+        ctxG.moveTo(0, h / 2); ctxG.lineTo(w, h / 2);
+        ctxG.stroke();
 
-            // Draw X (Red)
-            ctxG.strokeStyle = colGX;
-            ctxG.lineWidth = 2;
-            ctxG.beginPath();
-            for (let i = 0; i < debugState.historyX.length; i++) {
-                const val = Math.max(-2, Math.min(2, debugState.historyX[i])); // Clamp -2 to 2
-                const y = h / 2 - (val * h / 4);
-                if (i === 0) ctxG.moveTo(i, y); else ctxG.lineTo(i, y);
-            }
-            ctxG.stroke();
-
-            // Draw Y (Blue/Cyan)
-            ctxG.strokeStyle = colGY;
-            ctxG.beginPath();
-            for (let i = 0; i < debugState.historyY.length; i++) {
-                const val = Math.max(-2, Math.min(2, debugState.historyY[i]));
-                const y = h / 2 - (val * h / 4);
-                if (i === 0) ctxG.moveTo(i, y); else ctxG.lineTo(i, y);
-            }
-            ctxG.stroke();
+        // Draw X (Red)
+        ctxG.strokeStyle = colGX;
+        ctxG.lineWidth = 2;
+        ctxG.beginPath();
+        for (let i = 0; i < debugState.historyX.length; i++) {
+            const val = Math.max(-2, Math.min(2, debugState.historyX[i])); // Clamp -2 to 2
+            const y = h / 2 - (val * h / 4);
+            if (i === 0) ctxG.moveTo(i, y); else ctxG.lineTo(i, y);
         }
+        ctxG.stroke();
 
-        // --- Sensor Graph (A/B/G) ---
-        if (!debugState.histA) debugState.histA = new Array(280).fill(0);
-        if (!debugState.histB) debugState.histB = new Array(280).fill(0);
-        if (!debugState.histG) debugState.histG = new Array(280).fill(0);
+        // Draw Y (Blue/Cyan)
+        ctxG.strokeStyle = colGY;
+        ctxG.beginPath();
+        for (let i = 0; i < debugState.historyY.length; i++) {
+            const val = Math.max(-2, Math.min(2, debugState.historyY[i]));
+            const y = h / 2 - (val * h / 4);
+            if (i === 0) ctxG.moveTo(i, y); else ctxG.lineTo(i, y);
+        }
+        ctxG.stroke();
+    }
 
-        debugState.histA.push(parseFloat(debugState.alpha));
-        debugState.histA.shift();
-        debugState.histB.push(parseFloat(debugState.beta));
-        debugState.histB.shift();
-        debugState.histG.push(parseFloat(debugState.gamma));
-        debugState.histG.shift();
+    // --- Sensor Graph (A/B/G) ---
+    if (!debugState.histA) debugState.histA = new Array(280).fill(0);
+    if (!debugState.histB) debugState.histB = new Array(280).fill(0);
+    if (!debugState.histG) debugState.histG = new Array(280).fill(0);
 
-        const canvasS = document.getElementById('debug-graph-sensor');
-        if (canvasS) {
-            const ctxS = canvasS.getContext('2d');
-            const w = canvasS.width;
-            const h = canvasS.height;
-            ctxS.clearRect(0, 0, w, h);
+    debugState.histA.push(parseFloat(debugState.alpha));
+    debugState.histA.shift();
+    debugState.histB.push(parseFloat(debugState.beta));
+    debugState.histB.shift();
+    debugState.histG.push(parseFloat(debugState.gamma));
+    debugState.histG.shift();
 
-            // Scale to fit -180 to 360 comfortably in 60px
-            // Range 540. 60/540 ~ 0.11. Use 0.08 to be safe.
-            // Center shift: we want 0 to be slightly lower than middle if 360 is max.
-            // Let's just scale everything by dividing by 4 and centering.
-            // 360/4 = 90. -180/4 = -45. Total range 135px? Canvas is 60px.
-            // Divide by 20? 18px. Good.
-            // User request: "Up to 370".
-            // Height 60. Center 30. Max delta 30.
-            // 370 * scale <= 28 (padding). scale <= 0.075.
-            const sScale = 0.07; // Fits 370 range.
-            const cy = h / 2;
+    const canvasS = document.getElementById('debug-graph-sensor');
+    if (canvasS) {
+        const ctxS = canvasS.getContext('2d');
+        const w = canvasS.width;
+        const h = canvasS.height;
+        ctxS.clearRect(0, 0, w, h);
 
-            // Grid
-            ctxS.strokeStyle = 'rgba(255,255,255,0.1)';
-            ctxS.lineWidth = 1;
+        // Scale to fit -180 to 360 comfortably in 60px
+        // Range 540. 60/540 ~ 0.11. Use 0.08 to be safe.
+        // Center shift: we want 0 to be slightly lower than middle if 360 is max.
+        // Let's just scale everything by dividing by 4 and centering.
+        // 360/4 = 90. -180/4 = -45. Total range 135px? Canvas is 60px.
+        // Divide by 20? 18px. Good.
+        // User request: "Up to 370".
+        // Height 60. Center 30. Max delta 30.
+        // 370 * scale <= 28 (padding). scale <= 0.075.
+        const sScale = 0.07; // Fits 370 range.
+        const cy = h / 2;
+
+        // Grid
+        ctxS.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctxS.lineWidth = 1;
+        ctxS.beginPath();
+        ctxS.moveTo(0, cy); ctxS.lineTo(w, cy);
+        ctxS.stroke();
+
+        const drawLine = (arr, color) => {
+            ctxS.strokeStyle = color;
+            ctxS.lineWidth = 1.5;
             ctxS.beginPath();
-            ctxS.moveTo(0, cy); ctxS.lineTo(w, cy);
-            ctxS.stroke();
-
-            const drawLine = (arr, color) => {
-                ctxS.strokeStyle = color;
-                ctxS.lineWidth = 1.5;
-                ctxS.beginPath();
-                for (let i = 0; i < arr.length; i++) {
-                    const val = arr[i];
-                    // Wrap Alpha for display? Alpha 0 and 360 jump.
-                    // Just direct plot.
-                    const y = cy - (val * sScale);
-                    if (i === 0) ctxS.moveTo(i, y); else ctxS.lineTo(i, y);
-                }
-                ctxS.stroke();
-            };
-
-            drawLine(debugState.histA, colAlpha);
-            drawLine(debugState.histB, colBeta);
-            drawLine(debugState.histG, colGamma);
-        }
-
-        // --- Gravity Arrow (Vector) ---
-        const canvasA = document.getElementById('debug-arrow');
-        if (canvasA) {
-            const ctxA = canvasA.getContext('2d');
-            const w = canvasA.width;
-            const h = canvasA.height;
-            const cx = w / 2;
-            const cy = h / 2;
-            ctxA.clearRect(0, 0, w, h);
-
-            // Outer ring
-            ctxA.strokeStyle = 'rgba(255,255,255,0.3)';
-            ctxA.lineWidth = 1;
-            ctxA.beginPath();
-            ctxA.arc(cx, cy, w / 2 - 2, 0, Math.PI * 2);
-            ctxA.stroke();
-
-            // Calculate Vector Properties
-            const mag = Math.sqrt(gx * gx + gy * gy);
-            // Color based on Magnitude
-            // Map 0 (Zero-G) -> Blue (240), 1 (Normal) -> Green (120), 2+ (High) -> Red (0)
-            let hue = 240 - (mag * 120);
-            if (hue < 0) hue = 0;
-            if (hue > 240) hue = 240;
-            const arrowColor = `hsl(${hue}, 100%, 50%)`;
-
-            // Fixed Length Direction
-            const arrowLen = w / 2 - 4;
-            let dirX = 0, dirY = -1; // Default up? Or 0?
-            if (mag > 0.01) {
-                dirX = gx / mag;
-                dirY = gy / mag;
+            for (let i = 0; i < arr.length; i++) {
+                const val = arr[i];
+                // Wrap Alpha for display? Alpha 0 and 360 jump.
+                // Just direct plot.
+                const y = cy - (val * sScale);
+                if (i === 0) ctxS.moveTo(i, y); else ctxS.lineTo(i, y);
             }
+            ctxS.stroke();
+        };
 
-            const endX = cx + dirX * arrowLen;
-            const endY = cy + dirY * arrowLen;
-
-            ctxA.strokeStyle = arrowColor;
-            ctxA.lineWidth = 3;
-            ctxA.beginPath();
-            ctxA.moveTo(cx, cy);
-            ctxA.lineTo(endX, endY);
-            ctxA.stroke();
-
-            // Arrow head
-            const angle = Math.atan2(dirY, dirX);
-            ctxA.beginPath();
-            ctxA.moveTo(endX, endY);
-            ctxA.lineTo(endX - 7 * Math.cos(angle - Math.PI / 6), endY - 7 * Math.sin(angle - Math.PI / 6));
-            ctxA.lineTo(endX - 7 * Math.cos(angle + Math.PI / 6), endY - 7 * Math.sin(angle + Math.PI / 6));
-            ctxA.closePath();
-            ctxA.fillStyle = arrowColor;
-            ctxA.fill();
-        }
+        drawLine(debugState.histA, colAlpha);
+        drawLine(debugState.histB, colBeta);
+        drawLine(debugState.histG, colGamma);
     }
 
-    ctx.globalCompositeOperation = 'source-over';
-    requestAnimationFrame(render);
+    // --- Gravity Arrow (Vector) ---
+    const canvasA = document.getElementById('debug-arrow');
+    if (canvasA) {
+        const ctxA = canvasA.getContext('2d');
+        const w = canvasA.width;
+        const h = canvasA.height;
+        const cx = w / 2;
+        const cy = h / 2;
+        ctxA.clearRect(0, 0, w, h);
+
+        // Outer ring
+        ctxA.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctxA.lineWidth = 1;
+        ctxA.beginPath();
+        ctxA.arc(cx, cy, w / 2 - 2, 0, Math.PI * 2);
+        ctxA.stroke();
+
+        // Calculate Vector Properties
+        const mag = Math.sqrt(gx * gx + gy * gy);
+        // Color based on Magnitude
+        // Map 0 (Zero-G) -> Blue (240), 1 (Normal) -> Green (120), 2+ (High) -> Red (0)
+        let hue = 240 - (mag * 120);
+        if (hue < 0) hue = 0;
+        if (hue > 240) hue = 240;
+        const arrowColor = `hsl(${hue}, 100%, 50%)`;
+
+        // Fixed Length Direction
+        const arrowLen = w / 2 - 4;
+        let dirX = 0, dirY = -1; // Default up? Or 0?
+        if (mag > 0.01) {
+            dirX = gx / mag;
+            dirY = gy / mag;
+        }
+
+        const endX = cx + dirX * arrowLen;
+        const endY = cy + dirY * arrowLen;
+
+        ctxA.strokeStyle = arrowColor;
+        ctxA.lineWidth = 3;
+        ctxA.beginPath();
+        ctxA.moveTo(cx, cy);
+        ctxA.lineTo(endX, endY);
+        ctxA.stroke();
+
+        // Arrow head
+        const angle = Math.atan2(dirY, dirX);
+        ctxA.beginPath();
+        ctxA.moveTo(endX, endY);
+        ctxA.lineTo(endX - 7 * Math.cos(angle - Math.PI / 6), endY - 7 * Math.sin(angle - Math.PI / 6));
+        ctxA.lineTo(endX - 7 * Math.cos(angle + Math.PI / 6), endY - 7 * Math.sin(angle + Math.PI / 6));
+        ctxA.closePath();
+        ctxA.fillStyle = arrowColor;
+        ctxA.fill();
+    }
+}
+
+ctx.globalCompositeOperation = 'source-over';
+requestAnimationFrame(render);
 }
 
 render();
