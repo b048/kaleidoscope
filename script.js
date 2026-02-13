@@ -616,8 +616,13 @@ const initSensors = async () => {
 
 // Shake Detection
 let lastShakeTime = 0;
-const SHAKE_THRESHOLD = 20; // m/s^2 (Gravity is ~9.8, so need strong shake)
+const SHAKE_THRESHOLD = 12; // Lowered from 20 (User request)
 const SHAKE_COOLDOWN = 300; // ms
+
+// FPS Calculation
+let lastFpsTime = 0;
+let frameCount = 0;
+let currentFps = 0;
 
 function handleMotion(event) {
     if (!event.acceleration) return; // Need linear acceleration (without gravity preferably)
@@ -1710,6 +1715,7 @@ function render() {
         }
         document.getElementById('val-count').textContent = count;
         document.getElementById('val-energy').textContent = Math.floor(totalKE);
+        document.getElementById('val-fps').textContent = currentFps;
 
         document.getElementById('val-mouse').textContent = debugState.mouseX + ',' + debugState.mouseY;
         document.getElementById('val-res').textContent = renderWidth + 'x' + renderHeight;
