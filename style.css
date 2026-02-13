@@ -87,32 +87,28 @@ canvas {
     position: fixed;
     bottom: 10px;
     left: 10px;
-    background: rgba(0, 0, 0, 0.8);
-    /* Darker background */
+    background: rgba(0, 0, 0, 0.9);
+    /* Almost solid black */
     color: lime;
-    padding: 10px;
+    padding: 8px;
     border-radius: 8px;
     font-family: monospace;
-    font-size: 12px;
-    font-weight: bold;
-    /* Bold text */
+    font-size: 11px;
+    /* Slightly larger base */
+    font-weight: 900;
+    /* Extra bold */
     pointer-events: none;
     z-index: 200;
-    backdrop-filter: blur(4px);
-    border: 1px solid rgba(0, 255, 0, 0.3);
+    border: 1px solid rgba(0, 255, 0, 0.5);
     display: none;
-    text-shadow: 1px 1px 0 #000;
-    /* Text shadow for visibility */
+    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+    /* Strong outline */
     width: 320px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
-#debug-arrow {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+#debug-text {
+    flex: 1;
 }
 
 #debug-dashboard.visible {

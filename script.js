@@ -1729,8 +1729,8 @@ function render() {
             // 0 is at h/2 ? No.
             // Let's just scale everything by dividing by 4 and centering.
             // 360/4 = 90. -180/4 = -45. Total range 135px? Canvas is 60px.
-            // Divide by 10? 36px. Good.
-            const sScale = 0.1; // 100 deg -> 15px
+            // Divide by 20? 18px. Good.
+            const sScale = 0.05; // 100 deg -> 5px. 360 deg -> 18px. Fits in 30px (half height).
             const cy = h / 2;
 
             // Grid

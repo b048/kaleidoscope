@@ -13,7 +13,7 @@
 
     <div id="controls">
         <div class="control-header">
-            <div class="logo">KALEID <span style="font-size: 0.6em; color: #00d2ff;">v1.6</span></div>
+            <div class="logo">KALEID <span style="font-size: 0.6em; color: #00d2ff;">v1.7</span></div>
             <div class="mode-switch">
                 <button id="btn-physics" class="mode-btn active" onclick="setMode('physics')">Phys</button>
                 <button id="btn-audio" class="mode-btn" onclick="setMode('audio')">Audio</button>
@@ -116,16 +116,21 @@
         </div>
     </div>
     <div id="debug-dashboard">
-        <div>Alpha: <span id="val-alpha">--</span></div>
-        <div>Beta : <span id="val-beta">--</span></div>
-        <div>Gamma: <span id="val-gamma">--</span></div>
-        <div>GravX: <span id="val-grav-x">--</span></div>
-        <div>GravY: <span id="val-grav-y">--</span></div>
-        <div>Mouse: <span id="val-mouse">--</span></div>
-        <div>Res : <span id="val-res">--</span></div>
-        <canvas id="debug-arrow" width="50" height="50"></canvas>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px;">
+            <div id="debug-text">
+                <div>Alpha: <span id="val-alpha">--</span></div>
+                <div>Beta : <span id="val-beta">--</span></div>
+                <div>Gamma: <span id="val-gamma">--</span></div>
+                <div>GravX: <span id="val-grav-x">--</span></div>
+                <div>GravY: <span id="val-grav-y">--</span></div>
+                <div>Mouse: <span id="val-mouse">--</span></div>
+                <div>Res : <span id="val-res">--</span></div>
+            </div>
+            <canvas id="debug-arrow" width="60" height="60"
+                style="background: rgba(255,255,255,0.05); border-radius: 50%; border: 1px solid rgba(255,255,255,0.1);"></canvas>
+        </div>
         <canvas id="debug-graph" width="280" height="60"
-            style="width: 100%; margin-top: 5px; background: rgba(0,0,0,0.3);"></canvas>
+            style="width: 100%; margin-top: 2px; background: rgba(0,0,0,0.3);"></canvas>
         <canvas id="debug-graph-sensor" width="280" height="60"
             style="width: 100%; margin-top: 2px; background: rgba(0,0,0,0.3);"></canvas>
     </div>
@@ -134,3 +139,4 @@
 </body>
 
 </html>
+```
