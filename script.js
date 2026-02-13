@@ -124,6 +124,7 @@ let gemRestitution = 0.6;
 let rotationSpeedScale = 1.0;
 
 let globalScale = 1.0;
+let densityScale = 1.0; // Added missing definition
 
 // UI Listeners for Physics
 const bindSlider = (id, targetVar, displayId, callback) => {
