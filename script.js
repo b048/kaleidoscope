@@ -212,7 +212,12 @@ function calculateIdealCount() {
     // Based on Inverse Square Law distribution P(r) ~ 1/r^2
     const r_min = 8;
     const r_max = 33;
-    const avgArea = Math.PI * r_min * r_max * (globalScale * globalScale);
+
+    // Polygons (3-7 sides) have less area than circle.
+    // Approx 0.7 ratio.
+    const shapeFillFactor = 0.70;
+
+    const avgArea = Math.PI * r_min * r_max * (globalScale * globalScale) * shapeFillFactor;
     const totalArea = Math.PI * boundaryRadius * boundaryRadius;
     const targetArea = totalArea * 0.5; // 50% fill
     return Math.floor(targetArea / avgArea);
@@ -2117,52 +2122,3 @@ window.addEventListener('keydown', (e) => {
     if (e.key === '2') window.setMode('audio');
     if (e.key === '3') window.setMode('fractal');
 });
-
-// --- Mode Control Implementation (Fix for Ghost Function/Reset Bug) ---
-window.setPhysicsSubmode = function (submode) {
-    // 1. Update UI
-    const btnIds = {
-        'gravity': 'btn-mode-gravity',
-        'float': 'btn-mode-float',
-        'gyro': 'btn-mode-gyro'
-    };
-
-    // Reset all buttons style
-    Object.values(btnIds).forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) btn.style.background = 'rgba(0,0,0,0.4)';
-    });
-
-    // Set active button style
-    const activeId = btnIds[submode];
-    if (activeId) {
-        const btn = document.getElementById(activeId);
-        if (btn) btn.style.background = 'rgba(0,255,255,0.3)';
-    }
-
-    // 2. Logic
-    if (submode === 'gravity') {
-        engine.world.gravity.y = 1 * gravityScale;
-        engine.world.gravity.x = 0;
-        isSensorActive = false;
-    } else if (submode === 'float') {
-        engine.world.gravity.y = 0;
-        engine.world.gravity.x = 0;
-        isSensorActive = false;
-    } else if (submode === 'gyro') {
-        // Enable sensor
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            DeviceOrientationEvent.requestPermission()
-                .then(response => {
-                    if (response === 'granted') {
-                        isSensorActive = true;
-                    }
-                })
-                .catch(console.error);
-        } else {
-            isSensorActive = true;
-        }
-    }
-    // CRITICAL: Do NOT call init() or reset active population target.
-    // This allows the user's manual count setting or initial size-based calculation to persist.
-};
