@@ -124,7 +124,7 @@ let gemRestitution = 0.6;
 let rotationSpeedScale = 1.0;
 
 let globalScale = 1.0;
-let targetObjectCount = CONFIG.initialBeadCount; // Control active count
+let targetObjectCount = 64; // Will be recalculated based on area
 let isUserInteractingWithCount = false; // Track slider interaction
 
 // UI Listeners for Physics
@@ -203,6 +203,20 @@ resize();
 // Boundaries
 const boundaryRadius = Math.min(renderWidth, renderHeight) * 0.4;
 const boundaryCenter = { x: renderWidth / 2, y: renderHeight * 0.4 };
+
+function calculateIdealCount() {
+    // Average Area ~ pi * r_min * r_max * globalScale^2
+    // Based on Inverse Square Law distribution P(r) ~ 1/r^2
+    const r_min = 8;
+    const r_max = 33;
+    const avgArea = Math.PI * r_min * r_max * (globalScale * globalScale);
+    const totalArea = Math.PI * boundaryRadius * boundaryRadius;
+    const targetArea = totalArea * 0.5; // 50% fill
+    return Math.floor(targetArea / avgArea);
+}
+
+// Set initial target based on area
+targetObjectCount = calculateIdealCount();
 
 function createWalls() {
     const walls = [];
@@ -358,8 +372,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         countCtrl.addEventListener('mouseup', endInteract);
         countCtrl.addEventListener('touchend', endInteract);
-        // Also handle if cursor leaves while dragging? standard range behavior usually handles this but good to be safe if desired.
-        // For now, simple mouseup/touchend is usually enough for "released". 
+
+        // Initialize slider with calculated default
+        countCtrl.value = targetObjectCount;
+        document.getElementById('val-count-setting').textContent = targetObjectCount;
 
         countCtrl.addEventListener('input', (e) => {
             targetObjectCount = parseInt(e.target.value);
