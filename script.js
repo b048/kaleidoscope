@@ -218,7 +218,14 @@ function calculateIdealCount() {
     return Math.floor(targetArea / avgArea);
 }
 
-// Set initial target based on area
+// Initial Setup for Size & Count
+const scaleCtrlInit = document.getElementById('scaleControl');
+if (scaleCtrlInit) {
+    // Sync globalScale to HTML slider default (e.g. 1.0 or user set)
+    globalScale = parseFloat(scaleCtrlInit.value);
+}
+
+// Set initial target based on area (using corrected globalScale)
 targetObjectCount = calculateIdealCount();
 
 function createWalls() {
