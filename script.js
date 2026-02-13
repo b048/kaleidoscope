@@ -1630,7 +1630,7 @@ function render() {
 
     if (debugState.visible) {
         // Colors
-        const colAlpha = '#00ff00';
+        const colAlpha = '#55ff55'; // Updated green
         const colBeta = '#ffff00';
         const colGamma = '#ff00ff';
         const colGX = '#ff4444';
@@ -1651,6 +1651,19 @@ function render() {
 
         elGX.style.color = colGX; elGX.textContent = gx.toFixed(2);
         elGY.style.color = colGY; elGY.textContent = gy.toFixed(2);
+
+        // Count & Energy
+        const bodies = engine.world.bodies;
+        let count = 0;
+        let totalKE = 0;
+        for (let b of bodies) {
+            if (!b.isStatic) {
+                count++;
+                totalKE += 0.5 * b.mass * (b.speed * b.speed);
+            }
+        }
+        document.getElementById('val-count').textContent = count;
+        document.getElementById('val-energy').textContent = Math.floor(totalKE);
 
         document.getElementById('val-mouse').textContent = debugState.mouseX + ',' + debugState.mouseY;
         document.getElementById('val-res').textContent = renderWidth + 'x' + renderHeight;
@@ -1719,18 +1732,13 @@ function render() {
             const h = canvasS.height;
             ctxS.clearRect(0, 0, w, h);
 
-            // Scale: -180 to 360. Range = 540.
-            // Center roughly at 90? No, let's map roughly.
-            // A: 0~360
-            // B: -180~180
-            // G: -90~90
-            // Let's use simple scaling: y = val * scale + offset
-            // Fit -180 to 360 in Height.
-            // 0 is at h/2 ? No.
-            // Let's just scale everything by dividing by 4 and centering.
-            // 360/4 = 90. -180/4 = -45. Total range 135px? Canvas is 60px.
-            // Divide by 20? 18px. Good.
-            const sScale = 0.05; // 100 deg -> 5px. 360 deg -> 18px. Fits in 30px (half height).
+            // Scale to fit -180 to 360 comfortably in 60px
+            // Range 540. 60/540 ~ 0.11. Use 0.08 to be safe.
+            // Center shift: we want 0 to be slightly lower than middle if 360 is max.
+            // If cy = 30. 360*0.08 = 28.8. 30-28.8 = 1.2 (Top edge).
+            // -180*0.08 = -14.4. 30+14.4 = 44.4 (Bottom area).
+            // Fits perfect.
+            const sScale = 0.08;
             const cy = h / 2;
 
             // Grid
