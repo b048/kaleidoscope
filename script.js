@@ -316,22 +316,9 @@ function maintainActivePopulation() {
     bodies = Composite.allBodies(engine.world);
     activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
 
-    // Interactive Logic
-    // Interactive Logic
-    // Sync slider UI to target if not interacting (e.g. after resize or init)
-    if (!isUserInteractingWithCount) {
-        const countCtrl = document.getElementById('countControl');
-        const countVal = document.getElementById('val-count-setting');
-        if (countCtrl && countVal) {
-            // Only update DOM if value changed
-            if (parseInt(countCtrl.value) !== targetObjectCount) {
-                countCtrl.value = targetObjectCount;
-                countVal.textContent = targetObjectCount;
-            }
-        }
-    }
 
-    // Always adjust towards target (Active Population Control)
+
+    // ACTIVE: Adjust towards target
     const targetCount = targetObjectCount;
 
     if (activeGems.length < targetCount) {
