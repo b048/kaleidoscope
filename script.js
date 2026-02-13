@@ -124,9 +124,8 @@ let gemRestitution = 0.6;
 let rotationSpeedScale = 1.0;
 
 let globalScale = 1.0;
-let targetObjectCount = 64; // Will be recalculated based on area
+let targetObjectCount = CONFIG.initialBeadCount; // Control active count
 let isUserInteractingWithCount = false; // Track slider interaction
-
 
 // UI Listeners for Physics
 const bindSlider = (id, targetVar, displayId, callback) => {
@@ -142,8 +141,6 @@ const bindSlider = (id, targetVar, displayId, callback) => {
 
 bindSlider('gravityControl', null, 'val-gravity', (v) => gravityScale = v);
 bindSlider('rotateSpeedControl', null, 'val-rotate-speed', (v) => rotationSpeedScale = v);
-// Scale Control Interaction
-// (User requested NO dynamic count change on size change, only initial)
 bindSlider('scaleControl', null, 'val-scale', (v) => {
     const ratio = v / globalScale;
     globalScale = v;
@@ -206,32 +203,6 @@ resize();
 // Boundaries
 const boundaryRadius = Math.min(renderWidth, renderHeight) * 0.4;
 const boundaryCenter = { x: renderWidth / 2, y: renderHeight * 0.4 };
-
-function calculateIdealCount() {
-    // Average Area ~ pi * r_min * r_max * globalScale^2
-    // Based on Inverse Square Law distribution P(r) ~ 1/r^2
-    const r_min = 8;
-    const r_max = 33;
-
-    // Polygons (3-7 sides) have less area than circle.
-    // Approx 0.7 ratio.
-    const shapeFillFactor = 0.70;
-
-    const avgArea = Math.PI * r_min * r_max * (globalScale * globalScale) * shapeFillFactor;
-    const totalArea = Math.PI * boundaryRadius * boundaryRadius;
-    const targetArea = totalArea * 2.5; // 250% fill (User requested double again)
-    return Math.floor(targetArea / avgArea);
-}
-
-// Initial Setup for Size & Count
-const scaleCtrlInit = document.getElementById('scaleControl');
-if (scaleCtrlInit) {
-    // Sync globalScale to HTML slider default (e.g. 1.0 or user set)
-    globalScale = parseFloat(scaleCtrlInit.value);
-}
-
-// Set initial target based on area (using corrected globalScale)
-targetObjectCount = calculateIdealCount();
 
 function createWalls() {
     const walls = [];
@@ -316,41 +287,58 @@ function maintainActivePopulation() {
     bodies = Composite.allBodies(engine.world);
     activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
 
-
+    // Interactive Logic
+    if (!isUserInteractingWithCount) {
+        // IDLE: Sync slider to current count, do NOT spawn/cull
+        targetObjectCount = activeGems.length;
+        const countCtrl = document.getElementById('countControl');
+        const countVal = document.getElementById('val-count-setting');
+        if (countCtrl && countVal) {
+            // Only update DOM if value changed to avoid expensive layout thrashing every frame?
+            // Values are integers, so check vs value.
+            if (parseInt(countCtrl.value) !== targetObjectCount) {
+                countCtrl.value = targetObjectCount;
+                countVal.textContent = targetObjectCount;
+            }
+        }
+        return; // Exit, no spawning/culling
+    }
 
     // ACTIVE: Adjust towards target
     const targetCount = targetObjectCount;
 
     if (activeGems.length < targetCount) {
         // Spawn (Center of Boundary)
-        // Throttle removed for faster speed (User Request)
-        const x = boundaryCenter.x;
-        const y = boundaryCenter.y;
-        // Pass allowSpecial = false to prevent new eyes during adjust
-        const newGem = createGem(x, y, false, false);
+        if (Math.random() < 0.2) { // Throttle spawning
+            const x = boundaryCenter.x;
+            const y = boundaryCenter.y;
+            // Pass allowSpecial = false to prevent new eyes during adjust
+            const newGem = createGem(x, y, false, false);
 
-        // Give it a random kick
-        const angle = Math.random() * Math.PI * 2;
-        const force = (0.002 + Math.random() * 0.005) * newGem.mass;
-        Body.applyForce(newGem, newGem.position, {
-            x: Math.cos(angle) * force,
-            y: Math.sin(angle) * force
-        });
-        Composite.add(engine.world, newGem);
+            // Give it a random kick
+            const angle = Math.random() * Math.PI * 2;
+            const force = (0.002 + Math.random() * 0.005) * newGem.mass;
+            Body.applyForce(newGem, newGem.position, {
+                x: Math.cos(angle) * force,
+                y: Math.sin(angle) * force
+            });
+            Composite.add(engine.world, newGem);
+        }
     } else if (activeGems.length > targetCount) {
-        // Remove
-        // Throttle removed for faster speed
-        // Filter out Eyes/SuperEyes to preserve them
-        const removableGems = activeGems.filter(b => {
-            const type = b.plugin ? b.plugin.type : 'normal';
-            return type !== 'eye' && type !== 'super_eye';
-        });
+        // Remove (Throttle)
+        if (Math.random() < 0.2) {
+            // Filter out Eyes/SuperEyes to preserve them
+            const removableGems = activeGems.filter(b => {
+                const type = b.plugin ? b.plugin.type : 'normal';
+                return type !== 'eye' && type !== 'super_eye';
+            });
 
-        if (removableGems.length > 0) {
-            const index = Math.floor(Math.random() * removableGems.length);
-            const bodyToRemove = removableGems[index];
-            Composite.remove(engine.world, bodyToRemove);
-            spawnParticle(bodyToRemove.position.x, bodyToRemove.position.y, bodyToRemove.render.fillStyle);
+            if (removableGems.length > 0) {
+                const index = Math.floor(Math.random() * removableGems.length);
+                const bodyToRemove = removableGems[index];
+                Composite.remove(engine.world, bodyToRemove);
+                spawnParticle(bodyToRemove.position.x, bodyToRemove.position.y, bodyToRemove.render.fillStyle);
+            }
         }
     }
 }
@@ -372,10 +360,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         countCtrl.addEventListener('mouseup', endInteract);
         countCtrl.addEventListener('touchend', endInteract);
-
-        // Initialize slider with calculated default
-        countCtrl.value = targetObjectCount;
-        document.getElementById('val-count-setting').textContent = targetObjectCount;
+        // Also handle if cursor leaves while dragging? standard range behavior usually handles this but good to be safe if desired.
+        // For now, simple mouseup/touchend is usually enough for "released". 
 
         countCtrl.addEventListener('input', (e) => {
             targetObjectCount = parseInt(e.target.value);
@@ -397,14 +383,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Generate Gemstones
 function createGem(x, y, isStaticInBox = false, allowSpecial = true) {
-    // Randomize size more (Equal Area Distribution)
-    // P(r) ~ 1/r^2 to make Area(r) constant
-    // r = 1 / ( (1/min) - u * ( (1/min) - (1/max) ) )
+    // Size Distribution: Equal Area (1/r^2)
     const minSize = 8;
     const maxSize = 33;
+    const u = Math.random();
     const invMin = 1 / minSize;
     const invMax = 1 / maxSize;
-    const baseSize = 1 / (invMin - Math.random() * (invMin - invMax));
+    // Inverse transform sampling for f(r) ~ 1/r^2
+    const baseSize = 1 / (invMin - u * (invMin - invMax));
 
     let size = baseSize * globalScale; // Apply scale to supply gems too
 
