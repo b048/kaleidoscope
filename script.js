@@ -126,7 +126,7 @@ let rotationSpeedScale = 1.0;
 let globalScale = 1.0;
 let targetObjectCount = 64; // Will be recalculated based on area
 let isUserInteractingWithCount = false; // Track slider interaction
-let isUserInteractingWithCount = false; // Track slider interaction
+
 
 // UI Listeners for Physics
 const bindSlider = (id, targetVar, displayId, callback) => {
