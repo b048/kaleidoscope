@@ -2074,7 +2074,7 @@ function render() {
     requestAnimationFrame(render);
 }
 
-// render() moved to end of file
+render();
 
 // --- EXPORT FOR HTML BUTTONS ---
 window.setMode = function (mode) {
@@ -2118,49 +2118,51 @@ window.addEventListener('keydown', (e) => {
     if (e.key === '3') window.setMode('fractal');
 });
 
-// --- Physics Submode Control (Fix for Count Reset) ---
-window.setPhysicsSubmode = function (mode) {
-    // Safe assignment to global or existing variable
-    if (typeof physicsSubMode !== 'undefined') {
-        physicsSubMode = mode;
-    } else {
-        window.physicsSubMode = mode;
-    }
+// --- Mode Control Implementation (Fix for Ghost Function/Reset Bug) ---
+window.setPhysicsSubmode = function (submode) {
+    // 1. Update UI
+    const btnIds = {
+        'gravity': 'btn-mode-gravity',
+        'float': 'btn-mode-float',
+        'gyro': 'btn-mode-gyro'
+    };
 
-    // UI Update
-    document.querySelectorAll('.submode-btn').forEach(btn => {
-        btn.classList.remove('active');
-        // Reset style (except Eraser if we want to keep it separate, but usually submodes are mutually exclusive?)
-        // The HTML logic seemed to treat them as a group.
-        if (btn.id !== 'btn-eraser') {
-            btn.style.background = 'rgba(0,0,0,0.4)';
-        }
+    // Reset all buttons style
+    Object.values(btnIds).forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.style.background = 'rgba(0,0,0,0.4)';
     });
 
-    const btn = document.getElementById('btn-mode-' + mode);
-    if (btn) {
-        btn.classList.add('active');
-        btn.style.background = 'rgba(0,255,255,0.3)';
+    // Set active button style
+    const activeId = btnIds[submode];
+    if (activeId) {
+        const btn = document.getElementById(activeId);
+        if (btn) btn.style.background = 'rgba(0,255,255,0.3)';
     }
 
-    // Handle Gyro Permission
-    if (mode === 'gyro') {
+    // 2. Logic
+    if (submode === 'gravity') {
+        engine.world.gravity.y = 1 * gravityScale;
+        engine.world.gravity.x = 0;
+        isSensorActive = false;
+    } else if (submode === 'float') {
+        engine.world.gravity.y = 0;
+        engine.world.gravity.x = 0;
+        isSensorActive = false;
+    } else if (submode === 'gyro') {
+        // Enable sensor
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             DeviceOrientationEvent.requestPermission()
                 .then(response => {
                     if (response === 'granted') {
-                        if (typeof initSensors === 'function') initSensors();
+                        isSensorActive = true;
                     }
                 })
                 .catch(console.error);
         } else {
-            if (typeof initSensors === 'function') initSensors();
+            isSensorActive = true;
         }
     }
-
-    // The density is maintained by maintainActivePopulation().
-    // We expect user preference (count slider) to persist unless explicitly changed.
+    // CRITICAL: Do NOT call init() or reset active population target.
+    // This allows the user's manual count setting or initial size-based calculation to persist.
 };
-
-// Start Loop
-render();
