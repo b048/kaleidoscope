@@ -219,7 +219,7 @@ function calculateIdealCount() {
 
     const avgArea = Math.PI * r_min * r_max * (globalScale * globalScale) * shapeFillFactor;
     const totalArea = Math.PI * boundaryRadius * boundaryRadius;
-    const targetArea = totalArea * 1.0; // 100% fill (User requested 2x)
+    const targetArea = totalArea * 2.5; // 250% fill (User requested double again)
     return Math.floor(targetArea / avgArea);
 }
 
