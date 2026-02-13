@@ -13,30 +13,31 @@
 
     <div id="controls">
         <div class="control-header">
-            <div class="logo">KALEID <span style="font-size: 0.6em; color: #00d2ff;">v1.14.9</span></div>
+            <div class="logo">カレイド <span style="font-size: 0.6em; color: #00d2ff;">v1.14.9</span></div>
             <div class="mode-switch">
-                <button id="btn-physics" class="mode-btn active" onclick="setMode('physics')">Phys</button>
+                <button id="btn-physics" class="mode-btn active" onclick="setMode('physics')">物理</button>
                 <!-- <button id="btn-audio" class="mode-btn" onclick="setMode('audio')">Audio</button>
                 <button id="btn-fractal" class="mode-btn" onclick="setMode('fractal')">Frac</button> -->
             </div>
-            <button id="toggleDebug" class="icon-btn" onclick="toggleDebug()" title="Debug Info">🐞</button>
-            <button id="startAudio" class="icon-btn" onclick="toggleAudio()" title="Toggle Mic">🎤</button>
+            <button id="toggleDebug" class="icon-btn" onclick="toggleDebug()" title="デバッグ情報">🐞</button>
+            <!-- マイクボタンは一時的に非表示 -->
+            <!-- <button id="startAudio" class="icon-btn" onclick="toggleAudio()" title="Toggle Mic">🎤</button> -->
             <button id="toggleSettings" class="icon-btn" onclick="document.body.classList.toggle('settings-open')"
-                title="Settings">⚙️</button>
+                title="設定">⚙️</button>
         </div>
 
         <!-- Physics Sub-Modes (Visible in Physics Mode) -->
         <div id="physics-modes"
             style="display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; padding: 5px; margin-bottom: 5px;">
             <button id="btn-mode-gravity" class="submode-btn active" onclick="setPhysicsSubmode('gravity')"
-                style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #555; color:white; border-radius:15px; padding:5px;">Auto-G</button>
+                style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #555; color:white; border-radius:15px; padding:5px;">自動</button>
             <button id="btn-mode-float" class="submode-btn" onclick="setPhysicsSubmode('float')"
-                style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #555; color:white; border-radius:15px; padding:5px;">Zero-G</button>
+                style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #555; color:white; border-radius:15px; padding:5px;">無重力</button>
             <button id="btn-mode-gyro" class="submode-btn" onclick="setPhysicsSubmode('gyro')"
-                style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #555; color:white; border-radius:15px; padding:5px;">Gyro</button>
+                style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #555; color:white; border-radius:15px; padding:5px;">ジャイロ</button>
             <button id="btn-eraser" class="submode-btn" onclick="toggleEraser()"
                 style="flex:1; background:rgba(0,0,0,0.4); border:1px solid cyan; color:cyan; border-radius:15px; padding:5px; font-weight:bold;">
-                Eraser</button>
+                消しゴム</button>
         </div>
         <script>
             // Simple Active State Toggle Helper
@@ -60,7 +61,7 @@
             <!-- Global Settings -->
             <div class="control-row">
                 <label class="checkbox-label">
-                    <span>Auto-Rotate</span>
+                    <span>自動回転</span>
                     <input type="checkbox" id="autoRotateControl" checked>
                 </label>
             </div>
@@ -68,31 +69,31 @@
             <!-- Physics Mode Settings -->
             <div id="physics-settings">
                 <div class="slider-group">
-                    <label>Gravity <span id="val-gravity">1.0</span></label>
+                    <label>重力 <span id="val-gravity">1.0</span></label>
                     <input type="range" id="gravityControl" min="0" max="2" step="0.1" value="1">
                 </div>
                 <div class="slider-group">
-                    <label>Size <span id="val-scale">1.0</span></label>
+                    <label>サイズ <span id="val-scale">1.0</span></label>
                     <input type="range" id="scaleControl" min="0.5" max="2.0" step="0.1" value="1.0">
                 </div>
                 <div class="slider-group">
-                    <label>Air Res <span id="val-friction">0.05</span></label>
+                    <label>空気抵抗 <span id="val-friction">0.05</span></label>
                     <input type="range" id="frictionControl" min="0" max="0.5" step="0.01" value="0.05">
                 </div>
                 <div class="slider-group">
-                    <label>Bounce <span id="val-restitution">0.6</span></label>
+                    <label>壁バウンド <span id="val-restitution">0.6</span></label>
                     <input type="range" id="restitutionControl" min="0" max="1.2" step="0.1" value="0.6">
                 </div>
                 <div class="slider-group">
-                    <label>Gem Bounce <span id="val-gem-restitution">0.6</span></label>
+                    <label>宝石バウンド <span id="val-gem-restitution">0.6</span></label>
                     <input type="range" id="gemRestitutionControl" min="0" max="1.2" step="0.1" value="0.6">
                 </div>
                 <div class="slider-group">
-                    <label>Rot Speed <span id="val-rotate-speed">1.0</span></label>
+                    <label>回転速度 <span id="val-rotate-speed">1.0</span></label>
                     <input type="range" id="rotateSpeedControl" min="0" max="5.0" step="0.1" value="1.0">
                 </div>
                 <div class="slider-group">
-                    <label>Count <span id="val-count-setting">32</span></label>
+                    <label>個数 <span id="val-count-setting">32</span></label>
                     <input type="range" id="countControl" min="0" max="500" step="1" value="32">
                 </div>
             </div>
@@ -100,19 +101,19 @@
             <!-- Fractal Mode Settings -->
             <div id="fractal-settings" style="display: none;">
                 <div class="slider-group">
-                    <label>Zoom Speed <span id="val-zoom-speed">1.02</span></label>
+                    <label>ズーム速度 <span id="val-zoom-speed">1.02</span></label>
                     <input type="range" id="zoomSpeedControl" min="1.001" max="1.1" step="0.001" value="1.02">
                 </div>
                 <div class="slider-group">
-                    <label>Quality <span id="val-quality">0.25</span></label>
+                    <label>画質 <span id="val-quality">0.25</span></label>
                     <input type="range" id="qualityControl" min="0.1" max="1.0" step="0.05" value="0.25">
                 </div>
                 <div class="slider-group">
-                    <label>Type</label>
+                    <label>種類</label>
                     <select id="fractalTypeControl"
                         style="width: 100%; padding: 5px; background: rgba(0,0,0,0.5); color: white; border: 1px solid cyan;">
-                        <option value="mandelbrot">Mandelbrot</option>
-                        <option value="julia">Julia Set</option>
+                        <option value="mandelbrot">マンデルブロ</option>
+                        <option value="julia">ジュリア集合</option>
                     </select>
                 </div>
             </div>

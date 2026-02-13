@@ -957,11 +957,13 @@ window.toggleEraser = function () {
             btn.style.background = "cyan";
             btn.style.color = "black";
             btn.style.boxShadow = "0 0 15px cyan";
-            btn.textContent = "消しゴム";
+            // 有効時は状態が分かるようにする
+            btn.textContent = "消しゴムON";
         } else {
             btn.style.background = "rgba(0,0,0,0.3)";
             btn.style.color = "cyan";
             btn.style.boxShadow = "none";
+            // 通常時はシンプルなラベル
             btn.textContent = "消しゴム";
         }
     }
