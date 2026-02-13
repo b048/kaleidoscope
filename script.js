@@ -238,6 +238,14 @@ let supplySlots = [];
 const slotBaseY = renderHeight - CONFIG.supplyBoxHeight + 20;
 
 function updateSupplySlots() {
+    // Clear existing supply bodies from the world to prevent duplicates
+    const bodies = Composite.allBodies(engine.world);
+    bodies.forEach(b => {
+        if (b.label === 'gem_supply') {
+            Composite.remove(engine.world, b);
+        }
+    });
+
     supplySlots = [];
     // Base: Rows 2, Cols 6 (12 slots)
     const baseCols = CONFIG.slotCountCols; // 6
