@@ -124,7 +124,7 @@ let gemRestitution = 0.6;
 let rotationSpeedScale = 1.0;
 
 let globalScale = 1.0;
-let densityScale = 1.0; // Added missing definition
+let targetObjectCount = CONFIG.initialBeadCount; // Control active count
 
 // UI Listeners for Physics
 const bindSlider = (id, targetVar, displayId, callback) => {
@@ -302,12 +302,11 @@ updateSupplySlots();
 
 // UI Listeners (Bottom of file usually, but adding here for context or moving to setup)
 document.addEventListener('DOMContentLoaded', () => {
-    const densityCtrl = document.getElementById('densityControl');
-    if (densityCtrl) {
-        densityCtrl.addEventListener('input', (e) => {
-            densityScale = parseFloat(e.target.value);
-            document.getElementById('val-density').textContent = densityScale.toFixed(1);
-            // No need to update supply slots anymore
+    const countCtrl = document.getElementById('countControl');
+    if (countCtrl) {
+        countCtrl.addEventListener('input', (e) => {
+            targetObjectCount = parseInt(e.target.value);
+            document.getElementById('val-count-setting').textContent = targetObjectCount;
         });
     }
 });
