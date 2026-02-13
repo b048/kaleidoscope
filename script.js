@@ -448,14 +448,16 @@ function initPhysicsWorld() {
         wallRestitution = 1.0;
         gemRestitution = 1.0;
         CONFIG.initialBeadCount = calculateInitialCount(0.125); // 1/8th of normal (User Request: "Halve again")
-    } else if (physicsSubMode === 'eye') {
+        CONFIG.initialBeadCount = calculateInitialCount(0.125); // 1/8th of normal (User Request: "Halve again")
+    } else if (physicsSubMode === 'gyro') {
         gravityScale = 1.0;
         airFriction = 0.05;
         rotationSpeedScale = 1.0;
         wallRestitution = 0.6;
         gemRestitution = 0.6;
-        isAutoRotating = true;
-        CONFIG.initialBeadCount = calculateInitialCount(0.5);
+        isAutoRotating = false; // Manual Gravity (Gyro/Mouse)
+        CONFIG.initialBeadCount = calculateInitialCount(0.5); // Standard/Medium count (Same as old Eye mode default?)
+        // Let's use 0.5 (Half of Full) which is plenty.
     }
 
     // Update Sliders/Checkbox to match internal state
@@ -487,19 +489,8 @@ function initPhysicsWorld() {
     for (let i = 0; i < CONFIG.initialBeadCount; i++) {
         const gem = createGem(boundaryCenter.x + Common.random(-50, 50), boundaryCenter.y + Common.random(-50, 50), false);
 
-        // Eye Mode Enforcement
-        if (physicsSubMode === 'eye' && !eyeSpawned && i === CONFIG.initialBeadCount - 1) {
-            // Force last one to be eye if none spawned? 
-            // Better: Force specific property mod
-            if (!gem.plugin.type || gem.plugin.type !== 'eye') {
-                // Convert to eye
-                gem.plugin.type = 'eye';
-                gem.plugin.personality = 'curious';
-                // ... other init ...
-                // Simplified: Since createGem does valid init, we might just hack it or trust probability?
-                // User said: "1 guaranteed eye".
-            }
-        }
+        // Eye Mode removed - No special enforcement needed for Gyro
+
 
         // Zero-G Specific Properties
         if (physicsSubMode === 'float') {
@@ -515,18 +506,7 @@ function initPhysicsWorld() {
         Composite.add(engine.world, gem);
     }
 
-    // Explicit Eye enforcement helper if needed
-    if (physicsSubMode === 'eye') {
-        const bodies = Composite.allBodies(engine.world).filter(b => !b.isStatic);
-        const hasEye = bodies.some(b => b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye'));
-        if (!hasEye && bodies.length > 0) {
-            const b = bodies[Math.floor(Math.random() * bodies.length)];
-            b.plugin.type = 'eye';
-            b.plugin.personality = 'curious'; // Reset to standard eye defaults
-            b.plugin.emotion = 'normal';
-            // Scale density logic from createGem?
-        }
-    }
+
 }
 
 // Global exposure
