@@ -143,7 +143,7 @@ bindSlider('scaleControl', null, 'val-scale', (v) => {
     const ratio = v / globalScale;
     globalScale = v;
     Composite.allBodies(engine.world).forEach(body => {
-        if (!body.isStatic && body.label !== 'gem_supply') Body.scale(body, ratio, ratio);
+        if (!body.isStatic || body.label === 'gem_supply') Body.scale(body, ratio, ratio);
     });
 });
 bindSlider('frictionControl', null, 'val-friction', (v) => {
@@ -276,9 +276,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Generate Gemstones
 function createGem(x, y, isStaticInBox = false) {
-    // Randomize size more (User Request) -> Reverted to smaller variation
-    const baseSize = 15 + Math.random() * 10; // 15 to 25 range
-    let size = baseSize * (isStaticInBox ? 1.0 : globalScale);
+    // Randomize size more (User Request) -> Expanded range
+    const baseSize = 8 + Math.random() * 25; // 8 to 33 range (More variance)
+    let size = baseSize * globalScale; // Apply scale to supply gems too
 
     const sides = Math.floor(3 + Math.random() * 5);
     let color = CONFIG.gemColors[Math.floor(Math.random() * CONFIG.gemColors.length)];
@@ -345,8 +345,8 @@ function createGem(x, y, isStaticInBox = false) {
 
     let body;
     if (isRod) {
-        const w = 8 * globalScale; // Slightly thicker
-        const h = (40 + Math.random() * 50) * globalScale; // Range 40-90
+        const w = (4 + Math.random() * 6) * globalScale; // 4-10px width
+        const h = (30 + Math.random() * 70) * globalScale; // 30-100px length
         bodyOptions.angle = Math.random() * Math.PI;
         body = Bodies.rectangle(x, y, w, h, bodyOptions);
     } else {
