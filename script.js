@@ -317,9 +317,9 @@ function maintainActivePopulation() {
     activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
 
     // Interactive Logic
+    // Interactive Logic
     if (!isUserInteractingWithCount) {
-        // IDLE: Sync slider to current count, do NOT spawn/cull
-        targetObjectCount = activeGems.length;
+        // IDLE: Sync slider to target count (e.g. if updated by size change)
         const countCtrl = document.getElementById('countControl');
         const countVal = document.getElementById('val-count-setting');
         if (countCtrl && countVal) {
@@ -330,7 +330,7 @@ function maintainActivePopulation() {
                 countVal.textContent = targetObjectCount;
             }
         }
-        return; // Exit, no spawning/culling
+        // Do NOT return. Proceed to spawn/cull to maintain target.
     }
 
     // ACTIVE: Adjust towards target
