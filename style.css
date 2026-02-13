@@ -315,8 +315,13 @@ input[type=range]::-webkit-slider-runnable-track {
     }
 
     #debug-dashboard {
-        font-size: 10px;
-        width: 160px;
+        font-size: 9px;
+        width: auto;
+        max-width: 140px;
+        bottom: 50px;
+        /* Avoid bottom nav/safe area */
+        left: 5px;
+        padding: 5px;
     }
 
     /* Save space on small screens */
