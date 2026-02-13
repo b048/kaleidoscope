@@ -125,6 +125,7 @@ let rotationSpeedScale = 1.0;
 
 let globalScale = 1.0;
 let targetObjectCount = CONFIG.initialBeadCount; // Control active count
+let isUserInteractingWithCount = false; // Track slider interaction
 
 // UI Listeners for Physics
 const bindSlider = (id, targetVar, displayId, callback) => {
@@ -286,7 +287,24 @@ function maintainActivePopulation() {
     bodies = Composite.allBodies(engine.world);
     activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
 
-    // Calculate Target
+    // Interactive Logic
+    if (!isUserInteractingWithCount) {
+        // IDLE: Sync slider to current count, do NOT spawn/cull
+        targetObjectCount = activeGems.length;
+        const countCtrl = document.getElementById('countControl');
+        const countVal = document.getElementById('val-count-setting');
+        if (countCtrl && countVal) {
+            // Only update DOM if value changed to avoid expensive layout thrashing every frame?
+            // Values are integers, so check vs value.
+            if (parseInt(countCtrl.value) !== targetObjectCount) {
+                countCtrl.value = targetObjectCount;
+                countVal.textContent = targetObjectCount;
+            }
+        }
+        return; // Exit, no spawning/culling
+    }
+
+    // ACTIVE: Adjust towards target
     const targetCount = targetObjectCount;
 
     if (activeGems.length < targetCount) {
@@ -320,12 +338,36 @@ function maintainActivePopulation() {
 updateSupplySlots();
 
 // UI Listeners (Bottom of file usually, but adding here for context or moving to setup)
+// UI Listeners (Bottom of file usually, but adding here for context or moving to setup)
 document.addEventListener('DOMContentLoaded', () => {
     const countCtrl = document.getElementById('countControl');
     if (countCtrl) {
+        // Interaction State Listeners
+        const startInteract = () => { isUserInteractingWithCount = true; };
+        const endInteract = () => { isUserInteractingWithCount = false; };
+
+        countCtrl.addEventListener('mousedown', startInteract);
+        countCtrl.addEventListener('touchstart', startInteract, { passive: true });
+
+        countCtrl.addEventListener('mouseup', endInteract);
+        countCtrl.addEventListener('touchend', endInteract);
+        // Also handle if cursor leaves while dragging? standard range behavior usually handles this but good to be safe if desired.
+        // For now, simple mouseup/touchend is usually enough for "released". 
+
         countCtrl.addEventListener('input', (e) => {
             targetObjectCount = parseInt(e.target.value);
             document.getElementById('val-count-setting').textContent = targetObjectCount;
+            // Ensure we are in "interacting" state if input fires (e.g. keyboard nav)
+            isUserInteractingWithCount = true;
+            // Clear interaction flag shortly after if it was a single click/key (debounce?)
+            // Actually, for drag, mousedown sets it true. 
+            // For keyboard, we might need a timeout to reset. 
+            // But main request is "when touching slider".
+        });
+
+        // Safety: Reset on change (commit)
+        countCtrl.addEventListener('change', () => {
+            isUserInteractingWithCount = false;
         });
     }
 });
