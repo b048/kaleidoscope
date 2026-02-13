@@ -126,7 +126,7 @@ let rotationSpeedScale = 1.0;
 let globalScale = 1.0;
 let targetObjectCount = 64; // Will be recalculated based on area
 let isUserInteractingWithCount = false; // Track slider interaction
-let isUserInteractingWithSize = false; // Track size slider interaction
+let isUserInteractingWithCount = false; // Track slider interaction
 
 // UI Listeners for Physics
 const bindSlider = (id, targetVar, displayId, callback) => {
@@ -143,32 +143,13 @@ const bindSlider = (id, targetVar, displayId, callback) => {
 bindSlider('gravityControl', null, 'val-gravity', (v) => gravityScale = v);
 bindSlider('rotateSpeedControl', null, 'val-rotate-speed', (v) => rotationSpeedScale = v);
 // Scale Control Interaction
-const scaleCtrl = document.getElementById('scaleControl');
-if (scaleCtrl) {
-    const startSizeInteract = () => { isUserInteractingWithSize = true; };
-    const endSizeInteract = () => { isUserInteractingWithSize = false; };
-    scaleCtrl.addEventListener('mousedown', startSizeInteract);
-    scaleCtrl.addEventListener('touchstart', startSizeInteract, { passive: true });
-    // Reset on end/change
-    scaleCtrl.addEventListener('mouseup', endSizeInteract);
-    scaleCtrl.addEventListener('touchend', endSizeInteract);
-    scaleCtrl.addEventListener('change', endSizeInteract);
-}
-
+// (User requested NO dynamic count change on size change, only initial)
 bindSlider('scaleControl', null, 'val-scale', (v) => {
-    isUserInteractingWithSize = true; // Ensure flag is up during input
     const ratio = v / globalScale;
     globalScale = v;
     Composite.allBodies(engine.world).forEach(body => {
         if (!body.isStatic || body.label === 'gem_supply') Body.scale(body, ratio, ratio);
     });
-
-    // Auto-adjust count based on new size (Equal Area)
-    targetObjectCount = calculateIdealCount();
-    const countCtrl = document.getElementById('countControl');
-    const countVal = document.getElementById('val-count-setting');
-    if (countCtrl) countCtrl.value = targetObjectCount;
-    if (countVal) countVal.textContent = targetObjectCount;
 });
 bindSlider('frictionControl', null, 'val-friction', (v) => {
     airFriction = v;
@@ -324,7 +305,7 @@ function maintainActivePopulation() {
     activeGems = bodies.filter(b => (b.label === 'gem' || b.label === 'gem_transition') && !b.isStatic && b.label !== 'gem_supply');
 
     // Interactive Logic
-    if (!isUserInteractingWithCount && !isUserInteractingWithSize) {
+    if (!isUserInteractingWithCount) {
         // IDLE: Sync slider to current count, do NOT spawn/cull
         targetObjectCount = activeGems.length;
         const countCtrl = document.getElementById('countControl');
