@@ -1727,7 +1727,18 @@ function drawPhysicsMode(timestamp, ctx) {
             if (b.plugin.type !== 'super_eye' && b.plugin.emotion !== 'angry') {
                 ctx.fillStyle = b.plugin.complementary;
                 ctx.globalCompositeOperation = 'source-over';
-                const center = b.position;
+
+                // Find visible part for geometry
+                // For Supply Box gems (Compound), 'b.vertices' is the hull of Gem+Sensor.
+                // We want the Gem part's vertices.
+                const visualPart = (b.parts.length > 1)
+                    ? b.parts.find(p => p.label !== 'supply_sensor' && p !== b)
+                    : b;
+
+                if (!visualPart) return;
+
+                const center = visualPart.position;
+                const vertices = visualPart.vertices;
                 const scale = 0.5;
                 ctx.beginPath();
                 ctx.moveTo(center.x + (vertices[0].x - center.x) * scale, center.y + (vertices[0].y - center.y) * scale);
