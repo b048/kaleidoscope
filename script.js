@@ -863,10 +863,14 @@ function handleOrientation(event) {
     // it might be due to holding it flat-ish? 
     // We will just use raw beta.
 
-    // To be safe and clean:
+    // Clamp beta to prevent inversion when tilting past 90 degrees (User Request: Restore clamped logic)
+    // This prevents "climbing up" but restricts upside-down usage.
+    let beta = event.beta;
+    if (beta < 10 && beta > -90) beta = 10;
+
     const rad = Math.PI / 180;
     const rawX = Math.sin(event.gamma * rad);
-    const rawY = Math.sin(event.beta * rad);
+    const rawY = Math.sin(Math.max(10, beta) * rad);
 
     // Account for screen orientation
     const orientation = (window.screen && window.screen.orientation && window.screen.orientation.angle) || window.orientation || 0;
