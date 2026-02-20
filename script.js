@@ -1,5 +1,5 @@
 // App version - update this when deploying to confirm cache refresh
-const APP_VERSION = 'v9';
+const APP_VERSION = 'v10';
 
 // Matter.js aliases
 const Engine = Matter.Engine,

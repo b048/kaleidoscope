@@ -167,33 +167,55 @@
 
         // PWA Install Prompt
         let deferredInstallPrompt = null;
+
+        function updateInstallButton() {
+            const btn = document.getElementById('btn-install');
+            if (!btn) return;
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                || window.navigator.standalone === true;
+            if (isStandalone) {
+                // Already running as installed app – hide button
+                btn.style.display = 'none';
+            } else {
+                // In browser: always visible
+                btn.style.display = 'flex';
+                if (deferredInstallPrompt) {
+                    // Prompt ready – full opacity, clickable
+                    btn.style.opacity = '1';
+                    btn.title = 'ホーム画面に追加';
+                } else {
+                    // Prompt not ready yet (e.g. just after uninstall) – dimmed
+                    btn.style.opacity = '0.4';
+                    btn.title = '準備中... しばらくお待ちください';
+                }
+            }
+        }
+
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             deferredInstallPrompt = e;
-            const btn = document.getElementById('btn-install');
-            if (btn) btn.style.display = 'flex';
+            updateInstallButton();
         });
 
         window.installPWA = function () {
-            if (!deferredInstallPrompt) return;
+            if (!deferredInstallPrompt) {
+                alert('インストール準備中です。しばらく待ってから再試行してください。');
+                return;
+            }
             deferredInstallPrompt.prompt();
             deferredInstallPrompt.userChoice.then((choice) => {
                 deferredInstallPrompt = null;
-                // Only hide button if user accepted. If dismissed, keep visible
-                // so they can retry when browser re-fires beforeinstallprompt.
-                if (choice.outcome === 'accepted') {
-                    const btn = document.getElementById('btn-install');
-                    if (btn) btn.style.display = 'none';
-                }
-                // button remains visible; it will become re-clickable once
-                // beforeinstallprompt fires again (usually a few minutes later).
+                updateInstallButton();
             });
         };
 
         window.addEventListener('appinstalled', () => {
-            const btn = document.getElementById('btn-install');
-            if (btn) btn.style.display = 'none';
+            deferredInstallPrompt = null;
+            updateInstallButton();
         });
+
+        // Run on load to set initial state
+        updateInstallButton();
     </script>
     <script src="script.js"></script>
 </body>
