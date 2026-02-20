@@ -162,6 +162,37 @@
                 .catch(e => console.warn('SW error:', e));
         }
 
+        // DEBUG: Tap to identify element under touch (activate with debug mode)
+        window._debugTap = false;
+        document.addEventListener('touchstart', (e) => {
+            if (!window._debugTap) return;
+            const t = e.touches[0];
+            const x = t.clientX, y = t.clientY;
+            const els = document.elementsFromPoint(x, y);
+            const elDesc = els.map(el => `${el.tagName}#${el.id}.${[...el.classList].join('.')}`).join(' > ');
+            // Also grab canvas pixel
+            const cvs = document.getElementById('kaleidoscope-canvas');
+            let px = '?';
+            if (cvs) {
+                const ctx = cvs.getContext('2d');
+                const d = ctx.getImageData(x, y, 1, 1).data;
+                px = `rgba(${d[0]},${d[1]},${d[2]},${d[3]})`;
+            }
+            const dbg = document.getElementById('debug-text');
+            if (dbg) dbg.innerHTML = `TAP:(${Math.round(x)},${Math.round(y)})<br>PIX:${px}<br>${elDesc}`;
+            const dbgDiv = document.getElementById('debug-dashboard');
+            if (dbgDiv) dbgDiv.classList.add('visible');
+        }, { passive: true });
+        // toggleDebug will also enable tap debug
+        const _origToggle = window.toggleDebug;
+        window.addEventListener('load', () => {
+            const origFn = window.toggleDebug;
+            window.toggleDebug = function () {
+                origFn && origFn();
+                window._debugTap = !window._debugTap;
+            };
+        });
+
         // PWA Install Prompt
         let deferredInstallPrompt = null;
         window.addEventListener('beforeinstallprompt', (e) => {
