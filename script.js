@@ -1,3 +1,6 @@
+// App version - update this when deploying to confirm cache refresh
+const APP_VERSION = 'v6';
+
 // Matter.js aliases
 const Engine = Matter.Engine,
     Render = Matter.Render,
@@ -2255,6 +2258,8 @@ function render() {
 
         document.getElementById('val-mouse').textContent = debugState.mouseX + ',' + debugState.mouseY;
         document.getElementById('val-res').textContent = renderWidth + 'x' + renderHeight;
+        const verEl = document.getElementById('val-version');
+        if (verEl) verEl.textContent = APP_VERSION;
 
         // --- Gravity Graph (Acc) ---
         if (!debugState.historyX) debugState.historyX = new Array(280).fill(0);
