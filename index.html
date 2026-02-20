@@ -13,8 +13,11 @@
 
     <div id="controls">
         <div class="control-header">
-            <div class="logo">カレイド</div>
+
             <div class="mode-switch">
+                <button id="btn-eraser" class="submode-btn" onclick="toggleEraser()"
+                    style="background:rgba(0,0,0,0.4); border:1px solid cyan; color:cyan; border-radius:15px; padding:5px 10px; font-weight:bold; margin-right: 10px;">
+                    消しゴム</button>
                 <!-- <button id="btn-physics" class="mode-btn active" onclick="setMode('physics')">物理</button> -->
                 <!-- <button id="btn-audio" class="mode-btn" onclick="setMode('audio')">Audio</button>
                 <button id="btn-fractal" class="mode-btn" onclick="setMode('fractal')">Frac</button> -->
@@ -35,9 +38,7 @@
                 style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #555; color:white; border-radius:15px; padding:5px;">無重力</button>
             <button id="btn-mode-gyro" class="submode-btn" onclick="setPhysicsSubmode('gyro')"
                 style="flex:1; background:rgba(0,0,0,0.4); border:1px solid #555; color:white; border-radius:15px; padding:5px;">ジャイロ</button>
-            <button id="btn-eraser" class="submode-btn" onclick="toggleEraser()"
-                style="flex:1; background:rgba(0,0,0,0.4); border:1px solid cyan; color:cyan; border-radius:15px; padding:5px; font-weight:bold;">
-                消しゴム</button>
+            <!-- Eraser button moved to header -->
         </div>
         <script>
             // Simple Active State Toggle Helper
@@ -61,7 +62,7 @@
             <!-- Global Settings -->
             <div class="control-row" style="margin-bottom: 10px; justify-content: flex-end;">
                 <button id="toggleDebug" class="icon-btn" onclick="toggleDebug()" title="デバッグ情報"
-                    style="font-size: 1.2em;">🐞 デバッグ</button>
+                    style="font-size: 1.2em;">🐞</button>
             </div>
             <div class="control-row">
                 <label class="checkbox-label">
