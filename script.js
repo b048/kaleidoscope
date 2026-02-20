@@ -194,30 +194,30 @@ if (autoRotateCheckbox) {
 let boundaryRadius = Math.min(window.innerWidth, window.innerHeight) * 0.4;
 let boundaryCenter = { x: window.innerWidth / 2, y: window.innerHeight * 0.4 };
 
-// Resize - use visualViewport when available (fixes safe-area offset in PWA standalone mode)
-function getViewportDimensions() {
-    // visualViewport is more accurate in standalone PWA, accounts for soft keyboard etc.
-    if (window.visualViewport) {
-        return { w: window.visualViewport.width, h: window.visualViewport.height };
-    }
-    return { w: window.innerWidth, h: window.innerHeight };
+function getSafeAreaBottom() {
+    // Read the CSS env() safe-area-inset-bottom as a pixel value
+    try {
+        const el = document.documentElement;
+        // Use computed style to get safe-area value. Browsers set this as a px value.
+        const val = parseInt(getComputedStyle(el).getPropertyValue('--safe-area-bottom') || '0');
+        return isNaN(val) ? 0 : val;
+    } catch (e) { return 0; }
 }
 
 function resize() {
-    const { w, h } = getViewportDimensions();
-    renderWidth = w;
-    renderHeight = h;
+    // Use window.innerWidth/Height so canvas always fills the full screen (no gaps).
+    // visualViewport was causing the canvas to be narrower than the screen.
+    renderWidth = window.innerWidth;
+    renderHeight = window.innerHeight;
     canvas.width = renderWidth;
     canvas.height = renderHeight;
-    // Update boundary radius and center on resize
-    boundaryRadius = Math.min(renderWidth, renderHeight) * 0.4;
-    boundaryCenter = { x: renderWidth / 2, y: renderHeight * 0.4 };
+    // Adjust circle center upward by safe-area-inset-bottom to compensate for
+    // home bar / notch area in PWA standalone mode.
+    const safeB = getSafeAreaBottom();
+    boundaryRadius = Math.min(renderWidth, renderHeight - safeB) * 0.4;
+    boundaryCenter = { x: renderWidth / 2, y: (renderHeight - safeB) * 0.4 };
 }
 window.addEventListener('resize', resize);
-if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', resize);
-    window.visualViewport.addEventListener('scroll', resize);
-}
 resize();
 
 function createWalls() {
