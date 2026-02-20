@@ -152,6 +152,8 @@
             style="width: 100%; margin-top: 2px; background: rgba(0,0,0,0.3);"></canvas>
         <canvas id="debug-graph-sensor" width="280" height="60"
             style="width: 100%; margin-top: 2px; background: rgba(0,0,0,0.3);"></canvas>
+        <pre id="debug-tap-info"
+            style="font-size:9px;color:#0ff;margin-top:4px;white-space:pre-wrap;word-break:break-all;">Tap anywhere while debug is ON to identify</pre>
     </div>
     <canvas id="kaleidoscope-canvas"></canvas>
     <script>
@@ -161,46 +163,6 @@
                 .then(() => console.log('Service Worker registered'))
                 .catch(e => console.warn('SW error:', e));
         }
-
-        // DEBUG: When debug mode is ON, auto-scan right-middle area for elements
-        window._debugTap = false;
-
-        // Override toggleDebug after script.js loads to add element scan
-        window.addEventListener('load', () => {
-            const origFn = window.toggleDebug;
-            window.toggleDebug = function () {
-                window._debugTap = !window._debugTap;
-                origFn && origFn();
-
-                if (window._debugTap) {
-                    // Scan all elements near right-middle edge
-                    const rx = window.innerWidth - 10;
-                    const ry = window.innerHeight / 2;
-                    const allEls = document.querySelectorAll('*');
-                    const near = [];
-                    allEls.forEach(el => {
-                        const r = el.getBoundingClientRect();
-                        if (r.right >= rx - 40 && r.left <= rx && r.top <= ry + 60 && r.bottom >= ry - 60) {
-                            const vis = window.getComputedStyle(el).display !== 'none'
-                                && window.getComputedStyle(el).visibility !== 'hidden';
-                            if (vis) near.push(`${el.tagName}#${el.id} [${Math.round(r.left)},${Math.round(r.top)}-${Math.round(r.right)},${Math.round(r.bottom)}]`);
-                        }
-                    });
-                    // Canvas pixel at right-middle
-                    const cvs = document.getElementById('kaleidoscope-canvas');
-                    let px = '?';
-                    if (cvs) {
-                        const ctx2 = cvs.getContext('2d');
-                        const d = ctx2.getImageData(Math.min(rx, cvs.width - 1), Math.min(ry, cvs.height - 1), 1, 1).data;
-                        px = `rgba(${d[0]},${d[1]},${d[2]},${d[3]})`;
-                    }
-                    const dbgT = document.getElementById('debug-text');
-                    if (dbgT) dbgT.innerHTML = `<b>Right-middle scan (x=${Math.round(rx)},y=${Math.round(ry)})</b><br>Canvas px: ${px}<br>DOM:<br>${near.join('<br>') || 'none'}`;
-                    const dbgDiv = document.getElementById('debug-dashboard');
-                    if (dbgDiv) dbgDiv.classList.add('visible');
-                }
-            };
-        });
 
         // PWA Install Prompt
         let deferredInstallPrompt = null;

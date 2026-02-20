@@ -918,14 +918,37 @@ const debugState = {
     mouseX: 0, mouseY: 0
 };
 
+let _debugTapEnabled = false;
+
 window.toggleDebug = function () {
     debugState.visible = !debugState.visible;
+    _debugTapEnabled = debugState.visible;
     const dbg = document.getElementById('debug-dashboard');
     if (dbg) {
         if (debugState.visible) dbg.classList.add('visible');
         else dbg.classList.remove('visible');
     }
 };
+
+// Tap-to-identify: shows element & canvas pixel under touch when debug is on
+document.addEventListener('touchstart', (e) => {
+    if (!_debugTapEnabled) return;
+    const t = e.touches[0];
+    const x = t.clientX, y = t.clientY;
+    const els = document.elementsFromPoint(x, y);
+    const elDesc = els.map(el => `${el.tagName}#${el.id}`).join(' > ');
+    const cvs = canvas;
+    let px = '?';
+    try {
+        const imageCtx = cvs.getContext('2d');
+        const d = imageCtx.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+        px = `rgba(${d[0]},${d[1]},${d[2]},${d[3]})`;
+    } catch (e2) { px = 'err:' + e2.message; }
+    const tapDiv = document.getElementById('debug-tap-info');
+    if (tapDiv) tapDiv.textContent = `TAP(${Math.round(x)},${Math.round(y)}) PIX:${px}\n${elDesc}`;
+    const dbgDiv = document.getElementById('debug-dashboard');
+    if (dbgDiv) dbgDiv.classList.add('visible');
+}, { passive: true });
 
 // Sensor Initialization on First Interaction
 const initSensors = async () => {
