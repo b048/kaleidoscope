@@ -500,9 +500,12 @@ function createGem(x, y, isStaticInBox = false, allowSpecial = true) {
 
     // Rod Logic (User Request)
     const isRod = !isGlowing && !isEye && Math.random() < 0.15;
+    // Cross Logic (User Request)
+    const isCross = !isGlowing && !isEye && !isRod && Math.random() < 0.15;
 
-    // Adjust plugin type if it's a rod
+    // Adjust plugin type if it's a rod or cross
     if (isRod) plug.type = 'rod';
+    if (isCross) plug.type = 'cross';
 
     const bodyOptions = {
         friction: 0.005,
@@ -523,6 +526,22 @@ function createGem(x, y, isStaticInBox = false, allowSpecial = true) {
         const h = (30 + Math.random() * 70) * globalScale; // 30-100px length
         bodyOptions.angle = Math.random() * Math.PI;
         body = Bodies.rectangle(x, y, w, h, bodyOptions);
+    } else if (isCross) {
+        const w = (8 + Math.random() * 4) * globalScale; // Thickness
+        const h = (30 + Math.random() * 20) * globalScale; // Length
+
+        // Store geometry for rendering
+        plug.crossW = w;
+        plug.crossH = h;
+
+        const partA = Bodies.rectangle(x, y, w, h, { render: bodyOptions.render });
+        const partB = Bodies.rectangle(x, y, h, w, { render: bodyOptions.render });
+
+        body = Body.create({
+            parts: [partA, partB],
+            ...bodyOptions
+        });
+        Body.setAngle(body, Math.random() * Math.PI);
     } else {
         body = Bodies.polygon(x, y, sides, finalSize, bodyOptions);
     }
@@ -533,7 +552,37 @@ function createGem(x, y, isStaticInBox = false, allowSpecial = true) {
 
     if (isStaticInBox) {
         body.isStatic = true;
-        body.label = 'gem_supply';
+        body.label = 'gem_supply'; // Compound label
+
+        // Wrap in a larger sensor box for easier grabbing
+        // Slot size approx: Width / 6, Height 90
+        const sensorW = (renderWidth / CONFIG.slotCountCols) * 0.8;
+        const sensorH = (CONFIG.supplyBoxHeight / CONFIG.slotRows) * 0.8;
+
+        // Sensor part (invisible)
+        const sensor = Bodies.rectangle(x, y, sensorW, sensorH, {
+            isSensor: true,
+            render: { visible: false },
+            label: 'supply_sensor'
+        });
+
+        // Combine Gem and Sensor
+        // Note: Body.create uses the parts' positions. 
+        // We must ensure the main body (gem) is preserved.
+        // If 'body' is already compound (Cross), we flatten parts?
+        // Matter.js handles nested parts via Body.create, but it's cleaner to flatten.
+
+        const parts = body.parts.length > 1 ? body.parts.slice(1) : [body];
+
+        // Re-create as a compound of [Sensor, ...GemParts]
+        // Important: The text label 'gem_supply' is on the PARENT.
+        body = Body.create({
+            parts: [sensor, ...parts],
+            isStatic: true,
+            label: 'gem_supply',
+            plugin: plug, // Pass plugin to parent
+            render: body.render // Pass render properties to parent (Fix for appearance)
+        });
     }
 
     return body;
@@ -1037,8 +1086,17 @@ Events.on(mouseConstraint, 'startdrag', (event) => {
     if (isEraserActive) return; // Disable drag if eraser is on
 
     if (event.body.label === 'gem_supply') {
-        Matter.Body.setStatic(event.body, false);
-        event.body.label = 'gem_transition';
+        const compound = event.body;
+
+        // Instead of stripping parts (which glitches drag), disable the sensor's collision
+        const sensor = compound.parts.find(p => p.label === 'supply_sensor');
+        if (sensor) {
+            // Disable collision for the sensor part
+            sensor.collisionFilter = { group: -1, category: 0, mask: 0 };
+        }
+
+        Matter.Body.setStatic(compound, false);
+        compound.label = 'gem_transition';
     }
     if (event.body.plugin) event.body.plugin.emotion = 'scared';
 });
@@ -1379,6 +1437,7 @@ function drawPhysicsMode(timestamp, ctx) {
                 if (b.plugin.isFascinated && b.plugin.fascinatedTarget) {
                     // Turn towards glowing object
                     const d = Vector.sub(b.plugin.fascinatedTarget.position, b.position);
+                    const dist = Vector.magnitude(d);
                     targetAngle = Math.atan2(d.y, d.x);
                 } else {
                     const t = (timestamp + b.plugin.noiseOffset) * 0.001;
@@ -1482,52 +1541,24 @@ function drawPhysicsMode(timestamp, ctx) {
     bodies.forEach(b => {
         if (b.label === 'wall') return;
 
-        ctx.beginPath();
-        const vertices = b.vertices;
-        ctx.moveTo(vertices[0].x, vertices[0].y);
-        for (let j = 1; j < vertices.length; j += 1) {
-            ctx.lineTo(vertices[j].x, vertices[j].y);
-        }
-        ctx.lineTo(vertices[0].x, vertices[0].y);
-        ctx.closePath();
-
-        // Color Logic with Emotion
-        let fill = b.render.fillStyle;
-
-        // Main Fill
         if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
-            if (effectsEnabled && (b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0)) {
-                // AURA
-                const hue = (timestamp * 0.2) % 360; // Slow rainbow cycle
-                ctx.save();
-                ctx.globalCompositeOperation = 'screen';
-                ctx.shadowBlur = 40;
-                ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
-                ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${0.5 + Math.random() * 0.3})`;
-                ctx.lineWidth = 10;
-                ctx.stroke();
-                ctx.restore();
+            // ... Eye rendering logic handles its own drawing ...
+            // We can skip default drawing for eyes if we want, but currently it draws the body shape first.
+            // Actually, for eyes, the code below draws the shape.
+            // Let's keep existing structure but handle COMPOUND BODIES (Cross)
+        }
 
-                ctx.shadowBlur = 30;
-                ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
-
-                // RAINBOW BODY Override
-                ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
-                ctx.shadowColor = '#FFD700'; // Gold
-                ctx.strokeStyle = `rgba(255, 215, 0, ${0.5 + Math.random() * 0.3})`;
-                ctx.lineWidth = 10;
-                ctx.stroke();
-                ctx.restore();
-
-                ctx.shadowBlur = 30;
-                ctx.shadowColor = 'gold';
+        // Helper to draw a body path
+        const drawBodyPath = (vertices, b) => {
+            ctx.beginPath();
+            ctx.moveTo(vertices[0].x, vertices[0].y);
+            for (let j = 1; j < vertices.length; j++) {
+                ctx.lineTo(vertices[j].x, vertices[j].y);
             }
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.fillStyle = fill;
-            ctx.fill();
-            ctx.stroke();
-            ctx.globalCompositeOperation = 'screen';
-        } else {
+            ctx.lineTo(vertices[0].x, vertices[0].y);
+            ctx.closePath();
+
+            let fill = b.render.fillStyle;
             if (effectsEnabled && b.plugin && b.plugin.type === 'glowing') {
                 ctx.shadowBlur = 15;
                 ctx.shadowColor = 'white';
@@ -1536,12 +1567,159 @@ function drawPhysicsMode(timestamp, ctx) {
                 ctx.shadowBlur = 0;
                 ctx.fillStyle = fill;
             }
+            ctx.fill();
+            ctx.shadowBlur = 0; // reset
 
             ctx.strokeStyle = b.render.strokeStyle || 'rgba(255,255,255,0.5)';
-            ctx.lineWidth = 2;
-            ctx.fill();
+            ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 6 : 4;
             ctx.stroke();
-            ctx.shadowBlur = 0;
+        };
+
+        // CUSTOM RENDER FOR CROSS
+        if (b.plugin && b.plugin.type === 'cross' && b.plugin.crossW) {
+            const cx = b.position.x;
+            const cy = b.position.y;
+            const w = b.plugin.crossW;
+            const h = b.plugin.crossH;
+            const angle = b.angle;
+
+            // 12 Vertices of a "Plus" shape centered at 0,0
+            // Defined in Counter-Clockwise order
+            const rawVerts = [
+                { x: w / 2, y: -h / 2 }, { x: -w / 2, y: -h / 2 }, // Top bar top edge
+                { x: -w / 2, y: -w / 2 }, // Inner Top-Left
+                { x: -h / 2, y: -w / 2 }, { x: -h / 2, y: w / 2 }, // Left bar left edge
+                { x: -w / 2, y: w / 2 }, // Inner Bottom-Left
+                { x: -w / 2, y: h / 2 }, { x: w / 2, y: h / 2 }, // Bottom bar bottom edge
+                { x: w / 2, y: w / 2 }, // Inner Bottom-Right
+                { x: h / 2, y: w / 2 }, { x: h / 2, y: -w / 2 }, // Right bar right edge
+                { x: w / 2, y: -w / 2 } // Inner Top-Right
+            ];
+
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+
+            const vertices = rawVerts.map(v => {
+                return {
+                    x: cx + (v.x * cos - v.y * sin),
+                    y: cy + (v.x * sin + v.y * cos)
+                };
+            });
+
+            drawBodyPath(vertices, b);
+            return; // Skip default parts loop
+        }
+
+        // Handle Compound Bodies (Supply Box) - Cross is handled above now
+        const partsToDraw = (b.parts.length > 1) ? b.parts.slice(1) : [b];
+        const visibleParts = partsToDraw.filter(p => p.render.visible !== false && p.label !== 'supply_sensor');
+
+        // Let's add an explicit Aura Pass 0 for Eyes
+        if (b.plugin && (b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0) && effectsEnabled) {
+            const hue = (timestamp * 0.2) % 360;
+            const center = b.position; // Approximate center
+            const radius = 40 * globalScale; // Approx
+
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            ctx.shadowBlur = 40;
+            ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+            ctx.beginPath();
+            ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+            // Just a glow blob
+            ctx.fillStyle = `hsla(${hue}, 100%, 70%, 0.2)`;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // PASS 1: Stroke (Thick, to act as outline for merged shapes)
+        // We draw the stroke first, then the fill on top. 
+        // This covers the "internal" strokes where parts overlap (like in the Cross),
+        // leaving only the outer contour visible.
+        visibleParts.forEach(part => {
+            ctx.beginPath();
+            const vertices = part.vertices;
+            ctx.moveTo(vertices[0].x, vertices[0].y);
+            for (let j = 1; j < vertices.length; j += 1) {
+                ctx.lineTo(vertices[j].x, vertices[j].y);
+            }
+            ctx.lineTo(vertices[0].x, vertices[0].y);
+            ctx.closePath();
+
+            // Eye/Glow Aura (Pre-stroke)
+            if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
+                // ... Keep existing Aura Logic ...
+                if (effectsEnabled && (b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0)) {
+                    // (Aura Code suppressed for brevity, assume similar to before or handled in specific Aura block if preferred. 
+                    // Actually, Aura should be outside the part loop? No, usually centered on body.
+                    // But simplified here: let's draw aura once per body, not per part.
+                }
+            }
+
+            // Stroke Settings
+            ctx.strokeStyle = part.render.strokeStyle || b.render.strokeStyle || 'rgba(255,255,255,0.5)';
+            ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 6 : 4; // Thicker for outline
+            ctx.stroke();
+
+            // Glow effect (Screen) for stroke?
+            if (effectsEnabled && b.plugin && b.plugin.type === 'glowing') {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = 'white';
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+        });
+
+        // PASS 2: Fill (Obscures inner strokes)
+        if (b.plugin && (b.plugin.type === 'eye' || b.plugin.type === 'super_eye')) {
+            // Draw Eyes Part by Part (Usually simple bodies, but just in case)
+            visibleParts.forEach(part => {
+                ctx.beginPath();
+                const vertices = part.vertices;
+                ctx.moveTo(vertices[0].x, vertices[0].y);
+                for (let j = 1; j < vertices.length; j += 1) { ctx.lineTo(vertices[j].x, vertices[j].y); }
+                ctx.lineTo(vertices[0].x, vertices[0].y);
+                ctx.closePath();
+
+                let fill = b.render.fillStyle;
+                if (effectsEnabled && (b.plugin.type === 'super_eye' || b.plugin.glowTimer > 0)) {
+                    const hue = (timestamp * 0.2) % 360;
+                    ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+                } else {
+                    ctx.fillStyle = fill;
+                }
+                ctx.fill();
+
+                ctx.strokeStyle = part.render.strokeStyle || b.render.strokeStyle || 'rgba(255,255,255,0.5)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+        } else {
+            // Normal / Glowing Compound Bodies (Supply Box gems that aren't Cross/Eye)
+            visibleParts.forEach(part => {
+                ctx.beginPath();
+                const vertices = part.vertices;
+                ctx.moveTo(vertices[0].x, vertices[0].y);
+                for (let j = 1; j < vertices.length; j += 1) { ctx.lineTo(vertices[j].x, vertices[j].y); }
+                ctx.lineTo(vertices[0].x, vertices[0].y);
+                ctx.closePath();
+
+                let fill = b.render.fillStyle;
+                if (effectsEnabled && b.plugin && b.plugin.type === 'glowing') {
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = 'white';
+                    ctx.fillStyle = fill;
+                } else {
+                    ctx.shadowBlur = 0;
+                    ctx.fillStyle = fill;
+                }
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                ctx.strokeStyle = part.render.strokeStyle || b.render.strokeStyle || 'rgba(255,255,255,0.5)';
+                ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 6 : 4;
+                ctx.stroke();
+            });
         }
 
         // Inner Details (Complementary)
