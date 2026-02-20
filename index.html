@@ -174,10 +174,16 @@
         window.installPWA = function () {
             if (!deferredInstallPrompt) return;
             deferredInstallPrompt.prompt();
-            deferredInstallPrompt.userChoice.then(() => {
+            deferredInstallPrompt.userChoice.then((choice) => {
                 deferredInstallPrompt = null;
-                const btn = document.getElementById('btn-install');
-                if (btn) btn.style.display = 'none';
+                // Only hide button if user accepted. If dismissed, keep visible
+                // so they can retry when browser re-fires beforeinstallprompt.
+                if (choice.outcome === 'accepted') {
+                    const btn = document.getElementById('btn-install');
+                    if (btn) btn.style.display = 'none';
+                }
+                // button remains visible; it will become re-clickable once
+                // beforeinstallprompt fires again (usually a few minutes later).
             });
         };
 
