@@ -6,6 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Gravity Kaleidoscope</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#050505">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 </head>
 
@@ -25,6 +30,8 @@
             <!-- Debug button moved to settings -->
             <!-- マイクボタンは一時的に非表示 -->
             <!-- <button id="startAudio" class="icon-btn" onclick="toggleAudio()" title="Toggle Mic">🎤</button> -->
+            <button id="btn-install" class="icon-btn" onclick="installPWA()" title="ホーム画面に追加"
+                style="display:none;">⬇️</button>
             <button id="toggleSettings" class="icon-btn" onclick="document.body.classList.toggle('settings-open')"
                 title="設定">⚙️</button>
         </div>
@@ -147,6 +154,38 @@
             style="width: 100%; margin-top: 2px; background: rgba(0,0,0,0.3);"></canvas>
     </div>
     <canvas id="kaleidoscope-canvas"></canvas>
+    <script>
+        // Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./service-worker.js')
+                .then(() => console.log('Service Worker registered'))
+                .catch(e => console.warn('SW error:', e));
+        }
+
+        // PWA Install Prompt
+        let deferredInstallPrompt = null;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredInstallPrompt = e;
+            const btn = document.getElementById('btn-install');
+            if (btn) btn.style.display = 'flex';
+        });
+
+        window.installPWA = function () {
+            if (!deferredInstallPrompt) return;
+            deferredInstallPrompt.prompt();
+            deferredInstallPrompt.userChoice.then(() => {
+                deferredInstallPrompt = null;
+                const btn = document.getElementById('btn-install');
+                if (btn) btn.style.display = 'none';
+            });
+        };
+
+        window.addEventListener('appinstalled', () => {
+            const btn = document.getElementById('btn-install');
+            if (btn) btn.style.display = 'none';
+        });
+    </script>
     <script src="script.js"></script>
 </body>
 
