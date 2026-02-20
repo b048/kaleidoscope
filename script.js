@@ -2206,6 +2206,15 @@ function render() {
     // (heartbeat square removed - was leaving lime artifacts)
     ctx.clearRect(0, 0, renderWidth, renderHeight);
 
+    // Paint black behind the controls header so any stray artifacts are hidden.
+    // Objects are drawn AFTER this so they appear on top (not overlapped by black).
+    const controlsEl = document.getElementById('controls');
+    if (controlsEl) {
+        const cr = controlsEl.getBoundingClientRect();
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, cr.right + 8, cr.bottom + 8);
+    }
+
     // 物理モードのみを描画（Audio / Frac は一旦無効化）
     try {
         drawPhysicsMode(timestamp, ctx);
