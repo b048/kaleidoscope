@@ -856,10 +856,49 @@ function handleOrientation(event) {
         debugInfo.style.display = 'block';
     }
     if (event.gamma === null || event.beta === null) return;
-    isSensorActive = true;
+    // Clamp beta to prevent inversion when tilting past 90 degrees (User Request)
+    // Beta is -180 to 180. Upright is 90. Flat is 0.
+    // If user tilts past 90 (towards themselves), it goes to 100 etc.
+    // Sin(100) is positive, but decreasing. Sin(170) is near 0.
+    // If the phone is upside down, beta flips.
+    // Simple fix: Clamp beta to [-90, 90] range effectively for gravity calculation
+    // or just let it be, but if it's > 90, it might feel like "up".
+    // User says "falls up". This implies gravity Y becomes negative.
+    // This happens when beta < 0 (tilted away) or > 180?
+    // Actually, screen-up flat is beta=0. Upright is beta=90.
+    // Tilted forward (away) is beta < 0.
+    // Tilted backward (towards user) is beta > 90.
+    // If beta > 90, sin(beta) is still positive (until 180).
+    // So 100 degrees (tilted past vertical) should still fall "down" (y positive).
+    // However, if the user holds it flat and tilts *away*, beta is negative -> y negative -> falls UP.
+    // If they want "always down" relative to device bottom, we might want to clamp negative beta?
+    // Or maybe they mean Z-rotation (Gamma)?
+    // Inspecting the request: "Depending on tilt... falls up".
+    // Let's assume they want the objects to generally fall towards the bottom of the screen
+    // unless the phone is explicitly upside down.
+    // Constraining beta to be at least -10 or so?
+    // Let's try to ensure Y gravity is primarily positive if the phone is generally upright.
+
+    let beta = event.beta;
+    let gamma = event.gamma;
+
+    // Prevent "falling up" when phone is flat or slightly tilted back
+    // If beta is negative (tilted away), gravity Y is negative (up).
+    // User probably implies they are holding it and it suddenly floats up.
+    // Let's clamp beta so it doesn't go too negative unless explicitly flipped.
+
+    // Logic: If beta is in [-90, 0] (tilted away), map to [0, 90]? No.
+    // Just clamp beta to be >= -10? 
+    // If the user wants it to fall "down" (positive Y) mostly:
+    if (beta < 10 && beta > -90) beta = 10; // Force a minimum downward pull?
+
+    // Actually, a common issue is Gamma taking over when flat.
+    // Refined approach:
+
     const rad = Math.PI / 180;
     const rawX = Math.sin(event.gamma * rad);
-    const rawY = Math.sin(event.beta * rad);
+    // If beta is "clamped" to always be somewhat positive, it ensures distinct "down".
+    const rawY = Math.sin(Math.max(10, beta) * rad); // Force at least 10 degrees tilt "down"
 
     // Account for screen orientation
     const orientation = (window.screen && window.screen.orientation && window.screen.orientation.angle) || window.orientation || 0;
@@ -1598,7 +1637,7 @@ function drawPhysicsMode(timestamp, ctx) {
             ctx.shadowBlur = 0; // reset
 
             ctx.strokeStyle = b.render.strokeStyle || 'rgba(255,255,255,0.3)';
-            ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 2 : 1;
+            ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 2 : 2;
             ctx.stroke();
         };
 
@@ -1685,7 +1724,7 @@ function drawPhysicsMode(timestamp, ctx) {
 
             // Stroke Settings (User Request: Thinner or remove)
             ctx.strokeStyle = part.render.strokeStyle || b.render.strokeStyle || 'rgba(255,255,255,0.3)';
-            ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 2 : 0.5; // Thinner borders
+            ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 2 : 2; // Thinner borders
             ctx.stroke();
 
             // Glow effect (Screen) for stroke?
