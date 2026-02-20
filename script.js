@@ -869,35 +869,43 @@ function handleOrientation(event) {
         debugInfo.style.display = 'block';
     }
     if (event.gamma === null || event.beta === null) return;
-    // Reverted Beta Clamping (User Request: "Allows falling up when upside down")
-    // Original behavior allowed full rotation logic.
-    // The previous fix prevented upside-down usage.
-    // We will trust the raw sensor data again, but if the user experiences "falling up"
-    // it might be due to holding it flat-ish? 
-    // We will just use raw beta.
-
-    // Clamp beta to prevent inversion when tilting past 90 degrees (User Request: Restore clamped logic)
-    // This prevents "climbing up" but restricts upside-down usage.
-    let beta = event.beta;
-    if (beta < 10 && beta > -90) beta = 10;
+    isSensorActive = true;
 
     const rad = Math.PI / 180;
-    const rawX = Math.sin(event.gamma * rad);
-    const rawY = Math.sin(Math.max(10, beta) * rad);
+    const b = event.beta * rad;  // front-back tilt: 0=flat, 90=upright, ±180=face-down
+    const g = event.gamma * rad;  // left-right tilt: 0=none, ±90=landscape
 
-    // Account for screen orientation
+    // Physically correct decomposition of gravity (0,0,g) onto the screen plane.
+    // These formulas project real-world gravity into screen X/Y axes:
+    //   Screen X (rightward)  = sin(gamma)
+    //   Screen Y (downward)   = -cos(gamma) * sin(beta)
+    //      when upright (beta=90°): Y = -cos(g)*1 = -cos(g) ≈ -(1) = -1... but we want +1
+    // Convention: positive Y = screen-down.  Matter.js gravity.y=1 falls down.
+    //   gx =  sin(gamma)
+    //   gy = -cos(gamma) * sin(beta)   <- gives -1 when upright if gamma=0
+    // Flip sign on Y to match Matter.js (positive = down-on-screen):
+    const rawX = Math.sin(g);
+    const rawY = -Math.cos(g) * Math.sin(b);   // upright → rawY ≈ -1 (up on canvas = top)
+    // Matter.js: gravity.y positive = falls toward BOTTOM of canvas (down).
+    // When held upright (beta≈90, gamma≈0): rawX≈0, rawY≈-1 → gravity.y=-1 → falls UP?
+    // Actually canvas Y is down, so gravity.y=+1 means fall towards bottom. 
+    // At beta=90°, sin(90°)=1, cos(0°)=1 → rawY = -1*1 = -1 → gravity up. Wrong.
+    // Fix: negate rawY to match canvas coords where Y+ is down:
+    //   gx = sin(gamma)            rightward tilt → gx > 0 → gravity right ✓
+    //   gy = cos(gamma)*sin(beta)  upright → gy = +1 → gravity down ✓
+    //   gy = cos(gamma)*sin(beta)  flat → gy = 0 ✓
+    //   gy upside-down (beta=-90): gy = -1 → gravity up ✓
+    const gx = Math.sin(g);
+    const gy = Math.cos(g) * Math.sin(b);
+
+    // Account for screen rotation (landscape mode etc.)
     const orientation = (window.screen && window.screen.orientation && window.screen.orientation.angle) || window.orientation || 0;
-    const angle = orientation * rad;
+    const oa = -orientation * rad;   // negate: screen rotated CW → vectors rotate CCW
+    const cosO = Math.cos(oa);
+    const sinO = Math.sin(oa);
+    const x = gx * cosO - gy * sinO;
+    const y = gx * sinO + gy * cosO;
 
-    // Rotate vector by angle (screen rotation)
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-
-    // Rotate (x, y) by angle
-    const x = rawX * cos - rawY * sin;
-    const y = rawX * sin + rawY * cos;
-
-    // Move gravity assignment before debug update if needed, or just keep one.
     engine.world.gravity.x = x * gravityScale;
     engine.world.gravity.y = y * gravityScale;
 
