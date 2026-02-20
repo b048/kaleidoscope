@@ -1,5 +1,5 @@
 // App version - update this when deploying to confirm cache refresh
-const APP_VERSION = 'v8';
+const APP_VERSION = 'v9';
 
 // Matter.js aliases
 const Engine = Matter.Engine,
@@ -778,6 +778,9 @@ function initPhysicsWorld() {
         isAutoRotating = false; // Disable gravity rotation
         wallRestitution = 1.0;
         gemRestitution = 1.0;
+        // Directly zero out engine gravity so objects are weightless immediately
+        engine.world.gravity.x = 0;
+        engine.world.gravity.y = 0;
         CONFIG.initialBeadCount = calculateInitialCount(0.125); // 1/8th of normal (User Request: "Halve again")
         CONFIG.initialBeadCount = calculateInitialCount(0.125); // 1/8th of normal (User Request: "Halve again")
     } else if (physicsSubMode === 'gyro') {
@@ -866,6 +869,8 @@ initPhysicsWorld();
 const debugInfo = document.getElementById('debug-info');
 function handleOrientation(event) {
     if (isAutoRotating) return;
+    // Zero-G mode: gravity must stay at 0 regardless of device tilt
+    if (physicsSubMode === 'float') return;
     // debug-info display removed (was causing white dot on right edge)
     if (event.gamma === null || event.beta === null) return;
     isSensorActive = true;
