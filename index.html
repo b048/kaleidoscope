@@ -162,34 +162,43 @@
                 .catch(e => console.warn('SW error:', e));
         }
 
-        // DEBUG: Tap to identify element under touch (activate with debug mode)
+        // DEBUG: When debug mode is ON, auto-scan right-middle area for elements
         window._debugTap = false;
-        document.addEventListener('touchstart', (e) => {
-            if (!window._debugTap) return;
-            const t = e.touches[0];
-            const x = t.clientX, y = t.clientY;
-            const els = document.elementsFromPoint(x, y);
-            const elDesc = els.map(el => `${el.tagName}#${el.id}.${[...el.classList].join('.')}`).join(' > ');
-            // Also grab canvas pixel
-            const cvs = document.getElementById('kaleidoscope-canvas');
-            let px = '?';
-            if (cvs) {
-                const ctx = cvs.getContext('2d');
-                const d = ctx.getImageData(x, y, 1, 1).data;
-                px = `rgba(${d[0]},${d[1]},${d[2]},${d[3]})`;
-            }
-            const dbg = document.getElementById('debug-text');
-            if (dbg) dbg.innerHTML = `TAP:(${Math.round(x)},${Math.round(y)})<br>PIX:${px}<br>${elDesc}`;
-            const dbgDiv = document.getElementById('debug-dashboard');
-            if (dbgDiv) dbgDiv.classList.add('visible');
-        }, { passive: true });
-        // toggleDebug will also enable tap debug
-        const _origToggle = window.toggleDebug;
+
+        // Override toggleDebug after script.js loads to add element scan
         window.addEventListener('load', () => {
             const origFn = window.toggleDebug;
             window.toggleDebug = function () {
-                origFn && origFn();
                 window._debugTap = !window._debugTap;
+                origFn && origFn();
+
+                if (window._debugTap) {
+                    // Scan all elements near right-middle edge
+                    const rx = window.innerWidth - 10;
+                    const ry = window.innerHeight / 2;
+                    const allEls = document.querySelectorAll('*');
+                    const near = [];
+                    allEls.forEach(el => {
+                        const r = el.getBoundingClientRect();
+                        if (r.right >= rx - 40 && r.left <= rx && r.top <= ry + 60 && r.bottom >= ry - 60) {
+                            const vis = window.getComputedStyle(el).display !== 'none'
+                                && window.getComputedStyle(el).visibility !== 'hidden';
+                            if (vis) near.push(`${el.tagName}#${el.id} [${Math.round(r.left)},${Math.round(r.top)}-${Math.round(r.right)},${Math.round(r.bottom)}]`);
+                        }
+                    });
+                    // Canvas pixel at right-middle
+                    const cvs = document.getElementById('kaleidoscope-canvas');
+                    let px = '?';
+                    if (cvs) {
+                        const ctx2 = cvs.getContext('2d');
+                        const d = ctx2.getImageData(Math.min(rx, cvs.width - 1), Math.min(ry, cvs.height - 1), 1, 1).data;
+                        px = `rgba(${d[0]},${d[1]},${d[2]},${d[3]})`;
+                    }
+                    const dbgT = document.getElementById('debug-text');
+                    if (dbgT) dbgT.innerHTML = `<b>Right-middle scan (x=${Math.round(rx)},y=${Math.round(ry)})</b><br>Canvas px: ${px}<br>DOM:<br>${near.join('<br>') || 'none'}`;
+                    const dbgDiv = document.getElementById('debug-dashboard');
+                    if (dbgDiv) dbgDiv.classList.add('visible');
+                }
             };
         });
 
