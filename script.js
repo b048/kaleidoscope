@@ -864,10 +864,7 @@ initPhysicsWorld();
 const debugInfo = document.getElementById('debug-info');
 function handleOrientation(event) {
     if (isAutoRotating) return;
-    if (debugInfo) {
-        if (event.alpha !== null) debugInfo.textContent = `a:${event.alpha.toFixed(1)} b:${event.beta.toFixed(1)} g:${event.gamma.toFixed(1)}`;
-        debugInfo.style.display = 'block';
-    }
+    // debug-info display removed (was causing white dot on right edge)
     if (event.gamma === null || event.beta === null) return;
     isSensorActive = true;
 
