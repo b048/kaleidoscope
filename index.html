@@ -13,13 +13,13 @@
 
     <div id="controls">
         <div class="control-header">
-            <div class="logo">カレイド <span style="font-size: 0.6em; color: #00d2ff;">v1.14.9</span></div>
+            <div class="logo">カレイド</div>
             <div class="mode-switch">
-                <button id="btn-physics" class="mode-btn active" onclick="setMode('physics')">物理</button>
+                <!-- <button id="btn-physics" class="mode-btn active" onclick="setMode('physics')">物理</button> -->
                 <!-- <button id="btn-audio" class="mode-btn" onclick="setMode('audio')">Audio</button>
                 <button id="btn-fractal" class="mode-btn" onclick="setMode('fractal')">Frac</button> -->
             </div>
-            <button id="toggleDebug" class="icon-btn" onclick="toggleDebug()" title="デバッグ情報">🐞</button>
+            <!-- Debug button moved to settings -->
             <!-- マイクボタンは一時的に非表示 -->
             <!-- <button id="startAudio" class="icon-btn" onclick="toggleAudio()" title="Toggle Mic">🎤</button> -->
             <button id="toggleSettings" class="icon-btn" onclick="document.body.classList.toggle('settings-open')"
@@ -59,6 +59,10 @@
 
         <div class="settings-panel">
             <!-- Global Settings -->
+            <div class="control-row" style="margin-bottom: 10px; justify-content: flex-end;">
+                <button id="toggleDebug" class="icon-btn" onclick="toggleDebug()" title="デバッグ情報"
+                    style="font-size: 1.2em;">🐞 デバッグ</button>
+            </div>
             <div class="control-row">
                 <label class="checkbox-label">
                     <span>自動回転</span>

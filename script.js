@@ -500,8 +500,8 @@ function createGem(x, y, isStaticInBox = false, allowSpecial = true) {
 
     // Rod Logic (User Request)
     const isRod = !isGlowing && !isEye && Math.random() < 0.15;
-    // Cross Logic (User Request)
-    const isCross = !isGlowing && !isEye && !isRod && Math.random() < 0.15;
+    // Cross Logic (User Request: Reduce frequency)
+    const isCross = !isGlowing && !isEye && !isRod && Math.random() < 0.05;
 
     // Adjust plugin type if it's a rod or cross
     if (isRod) plug.type = 'rod';
@@ -684,6 +684,33 @@ Events.on(engine, 'collisionStart', (event) => {
 
             Composite.remove(engine.world, eaten);
         }
+    }
+});
+
+// Zero-G Energy Maintenance (User Request)
+Events.on(engine, 'beforeUpdate', () => {
+    if (physicsSubMode === 'float') {
+        const bodies = Composite.allBodies(engine.world);
+        bodies.forEach(b => {
+            if (b.isStatic || b.label === 'wall') return;
+
+            // Prevent stopping by adjusting restitution based on speed
+            const speed = b.speed;
+
+            // If very slow, high restitution to bounce back energy
+            if (speed < 2.0) {
+                b.restitution = 1.2;
+            } else if (speed > 15.0) {
+                // If too fast, dampen slightly
+                b.restitution = 0.8;
+            } else {
+                b.restitution = 1.0;
+            }
+
+            // Ensure no air friction
+            b.frictionAir = 0;
+            b.friction = 0;
+        });
     }
 });
 
@@ -1570,8 +1597,8 @@ function drawPhysicsMode(timestamp, ctx) {
             ctx.fill();
             ctx.shadowBlur = 0; // reset
 
-            ctx.strokeStyle = b.render.strokeStyle || 'rgba(255,255,255,0.5)';
-            ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 6 : 4;
+            ctx.strokeStyle = b.render.strokeStyle || 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 2 : 1;
             ctx.stroke();
         };
 
@@ -1656,9 +1683,9 @@ function drawPhysicsMode(timestamp, ctx) {
                 }
             }
 
-            // Stroke Settings
-            ctx.strokeStyle = part.render.strokeStyle || b.render.strokeStyle || 'rgba(255,255,255,0.5)';
-            ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 6 : 4; // Thicker for outline
+            // Stroke Settings (User Request: Thinner or remove)
+            ctx.strokeStyle = part.render.strokeStyle || b.render.strokeStyle || 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 2 : 0.5; // Thinner borders
             ctx.stroke();
 
             // Glow effect (Screen) for stroke?
@@ -1716,8 +1743,8 @@ function drawPhysicsMode(timestamp, ctx) {
                 ctx.fill();
                 ctx.shadowBlur = 0;
 
-                ctx.strokeStyle = part.render.strokeStyle || b.render.strokeStyle || 'rgba(255,255,255,0.5)';
-                ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 6 : 4;
+                ctx.strokeStyle = part.render.strokeStyle || b.render.strokeStyle || 'rgba(255,255,255,0.3)';
+                ctx.lineWidth = (b.plugin && b.plugin.type === 'glowing') ? 2 : 0.5;
                 ctx.stroke();
             });
         }
