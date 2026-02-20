@@ -195,10 +195,19 @@ if (autoRotateCheckbox) {
 let boundaryRadius = Math.min(window.innerWidth, window.innerHeight) * 0.4;
 let boundaryCenter = { x: window.innerWidth / 2, y: window.innerHeight * 0.4 };
 
-// Resize
+// Resize - use visualViewport when available (fixes safe-area offset in PWA standalone mode)
+function getViewportDimensions() {
+    // visualViewport is more accurate in standalone PWA, accounts for soft keyboard etc.
+    if (window.visualViewport) {
+        return { w: window.visualViewport.width, h: window.visualViewport.height };
+    }
+    return { w: window.innerWidth, h: window.innerHeight };
+}
+
 function resize() {
-    renderWidth = window.innerWidth;
-    renderHeight = window.innerHeight;
+    const { w, h } = getViewportDimensions();
+    renderWidth = w;
+    renderHeight = h;
     canvas.width = renderWidth;
     canvas.height = renderHeight;
     // Update boundary radius and center on resize
@@ -206,6 +215,10 @@ function resize() {
     boundaryCenter = { x: renderWidth / 2, y: renderHeight * 0.4 };
 }
 window.addEventListener('resize', resize);
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', resize);
+    window.visualViewport.addEventListener('scroll', resize);
+}
 resize();
 
 function createWalls() {
@@ -2160,10 +2173,7 @@ function render() {
 
     const ctx = canvas.getContext('2d');
 
-    // Heartbeat: Small Green Square to prove render loop is alive
-    ctx.fillStyle = 'lime';
-    ctx.fillRect(0, 0, 5, 5);
-
+    // (heartbeat square removed - was leaving lime artifacts)
     ctx.clearRect(0, 0, renderWidth, renderHeight);
 
     // 物理モードのみを描画（Audio / Frac は一旦無効化）
