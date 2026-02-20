@@ -185,8 +185,7 @@ if (autoRotateCheckbox) {
     autoRotateCheckbox.addEventListener('change', (e) => {
         isAutoRotating = e.target.checked;
         isSensorActive = !isAutoRotating;
-        const debugInfo = document.getElementById('debug-info');
-        if (debugInfo) debugInfo.style.display = isAutoRotating ? 'none' : 'block';
+        // debug-info display removed
     });
 }
 
