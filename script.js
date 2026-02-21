@@ -1,5 +1,5 @@
 // App version - update this when deploying to confirm cache refresh
-const APP_VERSION = 'v12';
+const APP_VERSION = 'v13';
 
 // Matter.js aliases
 const Engine = Matter.Engine,
@@ -848,6 +848,8 @@ function initPhysicsWorld() {
 }
 
 // Global exposure
+let _gyroListenerAdded = false; // prevent duplicate deviceorientation listeners
+
 window.setPhysicsSubmode = function (mode) {
     physicsSubMode = mode;
     console.log("Switching to " + mode);
@@ -857,6 +859,30 @@ window.setPhysicsSubmode = function (mode) {
     document.querySelectorAll('.submode-btn').forEach(btn => btn.classList.remove('active'));
     const btn = document.getElementById('btn-mode-' + mode);
     if (btn) btn.classList.add('active');
+
+    // iOS: request DeviceOrientation permission directly from this click handler
+    // (must be called from a synchronous user-gesture context)
+    if (mode === 'gyro') {
+        if (typeof DeviceOrientationEvent !== 'undefined' &&
+            typeof DeviceOrientationEvent.requestPermission === 'function') {
+            // iOS 13+: explicit permission required
+            DeviceOrientationEvent.requestPermission()
+                .then(result => {
+                    if (result === 'granted' && !_gyroListenerAdded) {
+                        window.addEventListener('deviceorientation', handleOrientation);
+                        _gyroListenerAdded = true;
+                        console.log('iOS gyro permission granted');
+                    } else if (result !== 'granted') {
+                        alert('ジャイロを使用するには、設定 → Safari → モーションとフィットネスを許可してください。');
+                    }
+                })
+                .catch(e => console.error('iOS gyro permission error:', e));
+        } else if (!_gyroListenerAdded) {
+            // Android / non-iOS: no permission needed
+            window.addEventListener('deviceorientation', handleOrientation);
+            _gyroListenerAdded = true;
+        }
+    }
 };
 
 // Initial Start
@@ -958,26 +984,18 @@ document.addEventListener('touchstart', (e) => {
     if (dbgDiv) dbgDiv.classList.add('visible');
 }, { passive: true });
 
-// Sensor Initialization on First Interaction
+// Sensor Initialization on First Interaction (Android / fallback)
 const initSensors = async () => {
-    // DISABLED: Auto fullscreen - removed automatic fullscreen request
-    // if (!document.fullscreenElement) {
-    //     try { await document.documentElement.requestFullscreen(); } catch (e) { }
-    // }
-
     // Orientation Permission
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        try {
-            const response = await DeviceOrientationEvent.requestPermission();
-            if (response === 'granted') {
-                window.addEventListener('deviceorientation', handleOrientation);
-            }
-        } catch (e) { console.error(e); }
-    } else {
+        // iOS: permission is handled in setPhysicsSubmode('gyro') directly from user gesture.
+        // Skip here to avoid calling requestPermission outside a direct gesture context.
+    } else if (!_gyroListenerAdded) {
         window.addEventListener('deviceorientation', handleOrientation);
+        _gyroListenerAdded = true;
     }
 
-    // Motion Permission (Often same permission request covers both, but safe to check)
+    // Motion Permission
     if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
         try {
             const response = await DeviceMotionEvent.requestPermission();
