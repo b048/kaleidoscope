@@ -156,6 +156,26 @@
         <pre id="debug-tap-info"
             style="font-size:9px;color:#0ff;margin-top:4px;white-space:pre-wrap;word-break:break-all;">Tap anywhere while debug is ON to identify</pre>
     </div>
+    <!-- Manual install guide modal -->
+    <div id="install-guide" onclick="this.style.display='none'" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.85);
+               align-items:center; justify-content:center; padding:24px; box-sizing:border-box;">
+        <div onclick="event.stopPropagation()" style="background:#1a1a2e; border:1px solid #0ff; border-radius:16px;
+                   padding:20px; max-width:320px; color:#fff; font-size:14px; line-height:1.7;">
+            <div style="font-size:18px; font-weight:bold; color:#0ff; margin-bottom:12px;">📲 ホーム画面に追加</div>
+            <div style="margin-bottom:10px; font-weight:bold; color:#adf;">Android (Chrome):</div>
+            <ol style="padding-left:18px; margin:0 0 14px;">
+                <li>Chrome の右上 <b>⋮</b> をタップ</li>
+                <li>「<b>ホーム画面に追加</b>」または「<b>アプリをインストール</b>」を選択</li>
+            </ol>
+            <div style="margin-bottom:10px; font-weight:bold; color:#adf;">iOS (Safari):</div>
+            <ol style="padding-left:18px; margin:0 0 16px;">
+                <li>下部の共有ボタン <b>⎋</b> をタップ</li>
+                <li>「<b>ホーム画面に追加</b>」を選択</li>
+            </ol>
+            <button onclick="document.getElementById('install-guide').style.display='none'" style="width:100%; padding:10px; background:#0ff; color:#000; border:none;
+                       border-radius:10px; font-weight:bold; font-size:15px;">閉じる</button>
+        </div>
+    </div>
     <canvas id="kaleidoscope-canvas"></canvas>
     <script>
         // Service Worker Registration
@@ -173,22 +193,10 @@
             if (!btn) return;
             const isStandalone = window.matchMedia('(display-mode: standalone)').matches
                 || window.navigator.standalone === true;
-            if (isStandalone) {
-                // Already running as installed app – hide button
-                btn.style.display = 'none';
-            } else {
-                // In browser: always visible
-                btn.style.display = 'flex';
-                if (deferredInstallPrompt) {
-                    // Prompt ready – full opacity, clickable
-                    btn.style.opacity = '1';
-                    btn.title = 'ホーム画面に追加';
-                } else {
-                    // Prompt not ready yet (e.g. just after uninstall) – dimmed
-                    btn.style.opacity = '0.4';
-                    btn.title = '準備中... しばらくお待ちください';
-                }
-            }
+            // Hide only when running as installed PWA
+            btn.style.display = isStandalone ? 'none' : 'flex';
+            btn.style.opacity = '1'; // always full opacity
+            btn.title = 'ホーム画面に追加';
         }
 
         window.addEventListener('beforeinstallprompt', (e) => {
@@ -198,21 +206,26 @@
         });
 
         window.installPWA = function () {
-            if (!deferredInstallPrompt) {
-                alert('インストール準備中です。しばらく待ってから再試行してください。');
-                return;
+            if (deferredInstallPrompt) {
+                deferredInstallPrompt.prompt();
+                deferredInstallPrompt.userChoice.then(() => {
+                    deferredInstallPrompt = null;
+                    updateInstallButton();
+                });
+            } else {
+                // Show manual install instructions
+                const el = document.getElementById('install-guide');
+                if (el) el.style.display = 'flex';
             }
-            deferredInstallPrompt.prompt();
-            deferredInstallPrompt.userChoice.then((choice) => {
-                deferredInstallPrompt = null;
-                updateInstallButton();
-            });
         };
 
         window.addEventListener('appinstalled', () => {
             deferredInstallPrompt = null;
             updateInstallButton();
         });
+
+        // Run on load to set initial state
+        updateInstallButton();
 
         // Run on load to set initial state
         updateInstallButton();

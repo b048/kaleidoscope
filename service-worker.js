@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kaleid-v11'; // bumped to force cache refresh
+const CACHE_NAME = 'kaleid-v12'; // bumped to force cache refresh
 const ASSETS = [
     './',
     './index.html',
